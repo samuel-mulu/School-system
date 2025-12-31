@@ -1,0 +1,278 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// User roles: REGISTRAR, OWNER, TEACHER
+enum UserRole {
+  REGISTRAR
+  OWNER
+  TEACHER
+}
+
+// Student class status: new (not assigned), assigned
+enum ClassStatus {
+  new
+  assigned
+}
+
+// Payment status: pending, confirmed
+enum PaymentStatus {
+  pending
+  confirmed
+}
+
+// Attendance status: present, absent, late
+enum AttendanceStatus {
+  present
+  absent
+  late
+}
+
+// User model for authentication
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  role      UserRole
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  teacherClasses Class[] @relation("HeadTeacher")
+
+  @@index([email])
+  @@index([role])
+}
+
+// Student model - central entity
+model Student {
+  id        String        @id @default(uuid())
+  
+  // Personal details
+  firstName       String
+  lastName        String
+  dateOfBirth     DateTime
+  gender          String
+  nationality     String?
+  religion        String?
+  
+  // Contact info
+  email           String?
+  phone           String?
+  
+  // Parent info
+  parentName      String
+  parentPhone     String
+  parentEmail     String?
+  parentRelation  String // e.g., "Father", "Mother", "Guardian"
+  
+  // Address
+  address         String
+  city            String
+  state           String?
+  zipCode         String?
+  country         String?
+  
+  // Emergency contact
+  emergencyName   String
+  emergencyPhone  String
+  emergencyRelation String
+  
+  // Medical info
+  medicalConditions String?
+  allergies         String?
+  bloodGroup         String?
+  
+  // Previous school history
+  previousSchool     String?
+  previousClass      String?
+  transferReason     String?
+  
+  // Status fields
+  classStatus     ClassStatus   @default(new)
+  paymentStatus   PaymentStatus @default(pending)
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  classHistory    StudentClass[]
+  attendance      Attendance[]
+  marks           Mark[]
+  payments        Payment[]
+
+  @@index([classStatus])
+  @@index([paymentStatus])
+  @@index([firstName, lastName])
+}
+
+// Class model
+model Class {
+  id          String   @id @default(uuid())
+  name        String   @unique // e.g., "Class A", "Grade 1"
+  description String?
+  academicYear String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  headTeacherId String?
+  headTeacher   User?   @relation("HeadTeacher", fields: [headTeacherId], references: [id])
+  
+  studentClasses StudentClass[]
+  subjects       Subject[]
+  attendance     Attendance[]
+  marks          Mark[]
+
+  @@index([name])
+}
+
+// Student-Class relationship with history preservation
+model StudentClass {
+  id        String   @id @default(uuid())
+  studentId String
+  classId   String
+  startDate DateTime @default(now())
+  endDate   DateTime? // NULL means active assignment
+  reason    String   // e.g., "initial assignment", "transfer"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@index([classId])
+  @@index([studentId, classId])
+  @@unique([studentId, classId, startDate])
+}
+
+// Teacher model (can be extended from User or separate)
+model Teacher {
+  id        String   @id @default(uuid())
+  userId    String?  @unique // Link to User if teacher has account
+  name      String
+  email     String?
+  phone     String?
+  subject   String?  // Primary subject
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Subject model - subjects per class
+model Subject {
+  id          String   @id @default(uuid())
+  classId     String
+  name        String   // e.g., "Math", "English"
+  code        String?  // Subject code
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  class Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  marks Mark[]
+
+  @@index([classId])
+  @@unique([classId, name])
+}
+
+// Attendance model - daily attendance records
+model Attendance {
+  id        String           @id @default(uuid())
+  studentId String
+  classId   String
+  date      DateTime         @db.Date
+  status    AttendanceStatus
+  notes     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  // Relations
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, date])
+  @@index([studentId])
+  @@index([classId])
+  @@index([date])
+  @@index([studentId, date])
+}
+
+// Marks model - academic marks per subject, term, student
+model Mark {
+  id        String   @id @default(uuid())
+  studentId String
+  classId   String
+  subjectId String
+  term      String   // e.g., "Term 1", "Term 2", "Final"
+  score     Float
+  maxScore  Float    @default(100)
+  grade     String?  // e.g., "A", "B", "C"
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@index([classId])
+  @@index([subjectId])
+  @@index([term])
+  @@index([studentId, subjectId, term])
+}
+
+// Payment model - monthly payment records
+model Payment {
+  id            String         @id @default(uuid())
+  studentId     String
+  amount        Float
+  month         String         // e.g., "2024-01" for January 2024
+  year          Int
+  status        PaymentStatus  @default(pending)
+  paymentDate   DateTime?
+  paymentMethod String?        // e.g., "cash", "bank_transfer", "card"
+  notes         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  // Relations
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  receipt Receipt?
+
+  @@unique([studentId, month, year])
+  @@index([studentId])
+  @@index([status])
+  @@index([month, year])
+}
+
+// Receipt model - linked to confirmed payments
+model Receipt {
+  id          String   @id @default(uuid())
+  paymentId   String   @unique
+  receiptNumber String @unique
+  issuedDate  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([receiptNumber])
+  @@index([paymentId])
+}
