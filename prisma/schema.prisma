@@ -8,6 +8,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // User roles: REGISTRAR, OWNER, TEACHER
@@ -182,11 +183,49 @@ model Subject {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  class Class  @relation(fields: [classId], references: [id], onDelete: Cascade)
-  marks Mark[]
+  class    Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  marks    Mark[]
+  subExams SubExam[]
 
   @@index([classId])
   @@unique([classId, name])
+}
+
+// Term model - academic terms (Term 1, Term 2)
+model Term {
+  id        String   @id @default(uuid())
+  name      String   @unique // "Term 1", "Term 2"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  subExams SubExam[]
+  marks    Mark[]
+
+  @@index([name])
+}
+
+// SubExam model - sub-examinations per subject and term
+model SubExam {
+  id           String   @id @default(uuid())
+  subjectId    String
+  termId       String
+  name         String   // "Quiz 1", "Assignment 1", "Mid Exam", "General Test"
+  maxScore     Float    // e.g., 5, 10, 20, 100
+  weightPercent Float   // e.g., 5%, 10%, 20%, 40%
+  examType     String   // "quiz", "assignment", "mid_exam", "general_test"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  term    Term    @relation(fields: [termId], references: [id], onDelete: Cascade)
+  marks   Mark[]
+
+  @@unique([subjectId, termId, name])
+  @@index([subjectId])
+  @@index([termId])
+  @@index([subjectId, termId])
 }
 
 // Attendance model - daily attendance records
@@ -211,30 +250,35 @@ model Attendance {
   @@index([studentId, date])
 }
 
-// Marks model - academic marks per subject, term, student
+// Marks model - academic marks per subject, term, student, sub-exam
 model Mark {
-  id        String   @id @default(uuid())
-  studentId String
-  classId   String
-  subjectId String
-  term      String   // e.g., "Term 1", "Term 2", "Final"
-  score     Float
-  maxScore  Float    @default(100)
-  grade     String?  // e.g., "A", "B", "C"
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(uuid())
+  studentId  String
+  classId    String
+  subjectId  String
+  termId     String   // Reference to Term instead of string
+  subExamId  String   // Link to SubExam
+  score      Float
+  maxScore   Float    // Keep for validation, but should match subExam.maxScore
+  grade      String?  // Calculated grade
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   // Relations
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
   class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
   subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  term    Term    @relation(fields: [termId], references: [id], onDelete: Cascade)
+  subExam SubExam @relation(fields: [subExamId], references: [id], onDelete: Cascade)
 
+  @@unique([studentId, subjectId, termId, subExamId])
   @@index([studentId])
   @@index([classId])
   @@index([subjectId])
-  @@index([term])
-  @@index([studentId, subjectId, term])
+  @@index([termId])
+  @@index([subExamId])
+  @@index([studentId, subjectId, termId])
 }
 
 // Payment model - monthly payment records

@@ -13,10 +13,16 @@ const createMarkSchema = z.object({
     studentId: z.string().uuid(),
     classId: z.string().uuid(),
     subjectId: z.string().uuid(),
-    term: z.string().min(1),
+    termId: z.string().uuid(),
+    subExamId: z.string().uuid(),
     score: z.number().min(0),
-    maxScore: z.number().positive().optional(),
-    grade: z.string().optional(),
+    notes: z.string().optional(),
+  }),
+});
+
+const recordMarkSchema = z.object({
+  body: z.object({
+    score: z.number().min(0),
     notes: z.string().optional(),
   }),
 });
@@ -24,7 +30,6 @@ const createMarkSchema = z.object({
 const updateMarkSchema = z.object({
   body: z.object({
     score: z.number().min(0).optional(),
-    maxScore: z.number().positive().optional(),
     grade: z.string().optional(),
     notes: z.string().optional(),
   }),
@@ -51,16 +56,48 @@ router.get(
   marksController.getMarkById
 );
 
+router.post(
+  '/record/student/:studentId/subexam/:subExamId',
+  authenticate,
+  requireTeacher,
+  validate(recordMarkSchema),
+  marksController.recordMark
+);
+
 router.get(
-  '/student/:studentId/term/:term',
+  '/term/:termId/student/:studentId',
   authenticate,
   marksController.getStudentMarksByTerm
 );
 
 router.get(
-  '/class/:classId/term/:term',
+  '/class/:classId/term/:termId',
   authenticate,
   marksController.getClassMarksByTerm
+);
+
+router.get(
+  '/calculate/term/:termId/student/:studentId/subject/:subjectId',
+  authenticate,
+  marksController.calculateTermScore
+);
+
+router.get(
+  '/calculate/year/student/:studentId/subject/:subjectId',
+  authenticate,
+  marksController.calculateYearScore
+);
+
+router.get(
+  '/report/term/:termId/student/:studentId',
+  authenticate,
+  marksController.getTermReport
+);
+
+router.get(
+  '/roster/class/:classId',
+  authenticate,
+  marksController.generateRoster
 );
 
 router.patch(

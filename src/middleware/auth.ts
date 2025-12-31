@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
-import { verifyToken, JWTPayload } from '../config/jwt';
+import { verifyToken } from '../config/jwt';
+import type { JWTPayload } from '../config/jwt';
 import { UnauthorizedError } from '../utils/errors';
 
 // Extend Express Request to include user

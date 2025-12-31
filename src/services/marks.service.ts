@@ -1,14 +1,14 @@
 import { prisma } from '../config/db';
 import { NotFoundError, ConflictError, BadRequestError } from '../utils/errors';
+import { assignGrade, calculateTermTotal, calculateYearAverage } from './calculation.service';
 
 interface CreateMarkData {
   studentId: string;
   classId: string;
   subjectId: string;
-  term: string;
+  termId: string;
+  subExamId: string;
   score: number;
-  maxScore?: number;
-  grade?: string;
   notes?: string;
 }
 
@@ -44,6 +44,28 @@ export const createMark = async (data: CreateMarkData) => {
     throw new BadRequestError('Subject does not belong to this class');
   }
 
+  // Verify term exists
+  const term = await prisma.term.findUnique({
+    where: { id: data.termId },
+  });
+
+  if (!term) {
+    throw new NotFoundError('Term not found');
+  }
+
+  // Verify sub-exam exists and belongs to subject and term
+  const subExam = await prisma.subExam.findUnique({
+    where: { id: data.subExamId },
+  });
+
+  if (!subExam) {
+    throw new NotFoundError('Sub-exam not found');
+  }
+
+  if (subExam.subjectId !== data.subjectId || subExam.termId !== data.termId) {
+    throw new BadRequestError('Sub-exam does not belong to this subject and term');
+  }
+
   // Check if student is/was assigned to this class
   const studentClass = await prisma.studentClass.findFirst({
     where: {
@@ -56,28 +78,42 @@ export const createMark = async (data: CreateMarkData) => {
     throw new BadRequestError('Student is not assigned to this class');
   }
 
-  // Validate score
-  const maxScore = data.maxScore || 100;
-  if (data.score < 0 || data.score > maxScore) {
-    throw new BadRequestError(`Score must be between 0 and ${maxScore}`);
+  // Check if mark already exists
+  const existing = await prisma.mark.findUnique({
+    where: {
+      studentId_subjectId_termId_subExamId: {
+        studentId: data.studentId,
+        subjectId: data.subjectId,
+        termId: data.termId,
+        subExamId: data.subExamId,
+      },
+    },
+  });
+
+  if (existing) {
+    throw new ConflictError('Mark already exists for this student, subject, term, and sub-exam');
   }
 
-  // Calculate grade if not provided
-  let grade = data.grade;
-  if (!grade) {
-    const percentage = (data.score / maxScore) * 100;
-    if (percentage >= 90) grade = 'A';
-    else if (percentage >= 80) grade = 'B';
-    else if (percentage >= 70) grade = 'C';
-    else if (percentage >= 60) grade = 'D';
-    else grade = 'F';
+  // Validate score against sub-exam max score
+  if (data.score < 0 || data.score > subExam.maxScore) {
+    throw new BadRequestError(`Score must be between 0 and ${subExam.maxScore}`);
   }
+
+  // Calculate grade based on percentage
+  const percentage = (data.score / subExam.maxScore) * 100;
+  const grade = assignGrade(percentage);
 
   const mark = await prisma.mark.create({
     data: {
-      ...data,
-      maxScore,
+      studentId: data.studentId,
+      classId: data.classId,
+      subjectId: data.subjectId,
+      termId: data.termId,
+      subExamId: data.subExamId,
+      score: data.score,
+      maxScore: subExam.maxScore,
       grade,
+      notes: data.notes,
     },
     include: {
       student: {
@@ -100,17 +136,67 @@ export const createMark = async (data: CreateMarkData) => {
           code: true,
         },
       },
+      term: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      subExam: {
+        select: {
+          id: true,
+          name: true,
+          examType: true,
+          maxScore: true,
+          weightPercent: true,
+        },
+      },
     },
   });
 
   return mark;
 };
 
+export const recordMark = async (
+  studentId: string,
+  subExamId: string,
+  score: number,
+  notes?: string
+) => {
+  // Get sub-exam to get related IDs
+  const subExam = await prisma.subExam.findUnique({
+    where: { id: subExamId },
+    include: {
+      subject: {
+        include: {
+          class: true,
+        },
+      },
+    },
+  });
+
+  if (!subExam) {
+    throw new NotFoundError('Sub-exam not found');
+  }
+
+  // Use createMark with all required fields
+    return createMark({
+      studentId,
+      classId: subExam.subject.classId,
+      subjectId: subExam.subjectId,
+      termId: subExam.termId,
+      subExamId,
+      score,
+      notes: notes || undefined,
+    });
+};
+
 export const getMarks = async (filters?: {
   studentId?: string;
   classId?: string;
   subjectId?: string;
-  term?: string;
+  termId?: string;
+  subExamId?: string;
   page?: number;
   limit?: number;
 }) => {
@@ -132,8 +218,12 @@ export const getMarks = async (filters?: {
     where.subjectId = filters.subjectId;
   }
 
-  if (filters?.term) {
-    where.term = filters.term;
+  if (filters?.termId) {
+    where.termId = filters.termId;
+  }
+
+  if (filters?.subExamId) {
+    where.subExamId = filters.subExamId;
   }
 
   const [marks, total] = await Promise.all([
@@ -158,6 +248,21 @@ export const getMarks = async (filters?: {
             id: true,
             name: true,
             code: true,
+          },
+        },
+        term: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        subExam: {
+          select: {
+            id: true,
+            name: true,
+            examType: true,
+            maxScore: true,
+            weightPercent: true,
           },
         },
       },
@@ -188,6 +293,8 @@ export const getMarkById = async (id: string) => {
       student: true,
       class: true,
       subject: true,
+      term: true,
+      subExam: true,
     },
   });
 
@@ -198,7 +305,7 @@ export const getMarkById = async (id: string) => {
   return mark;
 };
 
-export const getStudentMarksByTerm = async (studentId: string, term: string) => {
+export const getStudentMarksByTerm = async (studentId: string, termId: string) => {
   const student = await prisma.student.findUnique({
     where: { id: studentId },
   });
@@ -207,10 +314,18 @@ export const getStudentMarksByTerm = async (studentId: string, term: string) => 
     throw new NotFoundError('Student not found');
   }
 
+  const term = await prisma.term.findUnique({
+    where: { id: termId },
+  });
+
+  if (!term) {
+    throw new NotFoundError('Term not found');
+  }
+
   const marks = await prisma.mark.findMany({
     where: {
       studentId,
-      term,
+      termId,
     },
     include: {
       class: {
@@ -226,13 +341,48 @@ export const getStudentMarksByTerm = async (studentId: string, term: string) => 
           code: true,
         },
       },
-    },
-    orderBy: {
-      subject: {
-        name: 'asc',
+      term: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      subExam: {
+        select: {
+          id: true,
+          name: true,
+          examType: true,
+          maxScore: true,
+          weightPercent: true,
+        },
       },
     },
+    orderBy: [
+      {
+        subject: {
+          name: 'asc',
+        },
+      },
+      {
+        subExam: {
+          name: 'asc',
+        },
+      },
+    ],
   });
+
+  // Group marks by subject
+  const marksBySubject = marks.reduce((acc: Record<string, { subject: any; marks: any[] }>, mark: any) => {
+    const subjectId = mark.subjectId;
+    if (!acc[subjectId]) {
+      acc[subjectId] = {
+        subject: mark.subject,
+        marks: [],
+      };
+    }
+    acc[subjectId].marks.push(mark);
+    return acc;
+  }, {} as Record<string, { subject: any; marks: any[] }>);
 
   return {
     student: {
@@ -240,18 +390,20 @@ export const getStudentMarksByTerm = async (studentId: string, term: string) => 
       firstName: student.firstName,
       lastName: student.lastName,
     },
-    term,
-    marks,
+    term: {
+      id: term.id,
+      name: term.name,
+    },
+    marksBySubject: Object.values(marksBySubject),
+    allMarks: marks,
     summary: {
-      totalSubjects: marks.length,
-      averageScore: marks.length > 0
-        ? marks.reduce((sum, m) => sum + (m.score / m.maxScore) * 100, 0) / marks.length
-        : 0,
+      totalSubjects: Object.keys(marksBySubject).length,
+      totalMarks: marks.length,
     },
   };
 };
 
-export const getClassMarksByTerm = async (classId: string, term: string) => {
+export const getClassMarksByTerm = async (classId: string, termId: string) => {
   const classRecord = await prisma.class.findUnique({
     where: { id: classId },
   });
@@ -260,10 +412,18 @@ export const getClassMarksByTerm = async (classId: string, term: string) => {
     throw new NotFoundError('Class not found');
   }
 
+  const term = await prisma.term.findUnique({
+    where: { id: termId },
+  });
+
+  if (!term) {
+    throw new NotFoundError('Term not found');
+  }
+
   const marks = await prisma.mark.findMany({
     where: {
       classId,
-      term,
+      termId,
     },
     include: {
       student: {
@@ -278,6 +438,21 @@ export const getClassMarksByTerm = async (classId: string, term: string) => {
           id: true,
           name: true,
           code: true,
+        },
+      },
+      term: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      subExam: {
+        select: {
+          id: true,
+          name: true,
+          examType: true,
+          maxScore: true,
+          weightPercent: true,
         },
       },
     },
@@ -292,6 +467,11 @@ export const getClassMarksByTerm = async (classId: string, term: string) => {
           lastName: 'asc',
         },
       },
+      {
+        subExam: {
+          name: 'asc',
+        },
+      },
     ],
   });
 
@@ -300,7 +480,10 @@ export const getClassMarksByTerm = async (classId: string, term: string) => {
       id: classRecord.id,
       name: classRecord.name,
     },
-    term,
+    term: {
+      id: term.id,
+      name: term.name,
+    },
     marks,
   };
 };
@@ -309,13 +492,15 @@ export const updateMark = async (
   id: string,
   data: {
     score?: number;
-    maxScore?: number;
     grade?: string;
     notes?: string;
   }
 ) => {
   const mark = await prisma.mark.findUnique({
     where: { id },
+    include: {
+      subExam: true,
+    },
   });
 
   if (!mark) {
@@ -324,7 +509,7 @@ export const updateMark = async (
 
   // Validate score if provided
   if (data.score !== undefined) {
-    const maxScore = data.maxScore || mark.maxScore;
+    const maxScore = mark.subExam.maxScore;
     if (data.score < 0 || data.score > maxScore) {
       throw new BadRequestError(`Score must be between 0 and ${maxScore}`);
     }
@@ -332,17 +517,17 @@ export const updateMark = async (
     // Recalculate grade if score changed
     if (!data.grade) {
       const percentage = (data.score / maxScore) * 100;
-      if (percentage >= 90) data.grade = 'A';
-      else if (percentage >= 80) data.grade = 'B';
-      else if (percentage >= 70) data.grade = 'C';
-      else if (percentage >= 60) data.grade = 'D';
-      else data.grade = 'F';
+      data.grade = assignGrade(percentage);
     }
   }
 
   const updated = await prisma.mark.update({
     where: { id },
-    data,
+    data: {
+      score: data.score,
+      grade: data.grade,
+      notes: data.notes,
+    },
     include: {
       student: {
         select: {
@@ -362,6 +547,21 @@ export const updateMark = async (
           id: true,
           name: true,
           code: true,
+        },
+      },
+      term: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      subExam: {
+        select: {
+          id: true,
+          name: true,
+          examType: true,
+          maxScore: true,
+          weightPercent: true,
         },
       },
     },
@@ -384,5 +584,114 @@ export const deleteMark = async (id: string) => {
   });
 
   return { message: 'Mark deleted successfully' };
+};
+
+// New functions for calculations
+export const calculateTermScore = async (
+  studentId: string,
+  subjectId: string,
+  termId: string
+) => {
+  return calculateTermTotal(studentId, subjectId, termId);
+};
+
+export const calculateYearScore = async (
+  studentId: string,
+  subjectId: string
+) => {
+  return calculateYearAverage(studentId, subjectId);
+};
+
+export const getTermReport = async (studentId: string, termId: string) => {
+  const student = await prisma.student.findUnique({
+    where: { id: studentId },
+  });
+
+  if (!student) {
+    throw new NotFoundError('Student not found');
+  }
+
+  const term = await prisma.term.findUnique({
+    where: { id: termId },
+  });
+
+  if (!term) {
+    throw new NotFoundError('Term not found');
+  }
+
+  // Get all subjects the student is enrolled in
+  const studentClasses = await prisma.studentClass.findMany({
+    where: {
+      studentId,
+      endDate: null,
+    },
+    include: {
+      class: {
+        include: {
+          subjects: true,
+        },
+      },
+    },
+  });
+
+  const subjects = studentClasses.flatMap((sc: any) => sc.class.subjects);
+
+  // Calculate term scores for each subject
+  const subjectScores = await Promise.all(
+    subjects.map(async (subject: any) => {
+      try {
+        const termScore = await calculateTermScore(
+          studentId,
+          subject.id,
+          termId
+        );
+        return {
+          subject: {
+            id: subject.id,
+            name: subject.name,
+            code: subject.code,
+          },
+          ...termScore,
+        };
+      } catch {
+        return {
+          subject: {
+            id: subject.id,
+            name: subject.name,
+            code: subject.code,
+          },
+          subExamTotal: 0,
+          generalTestTotal: 0,
+          termTotal: 0,
+          grade: 'F',
+          breakdown: [],
+        };
+      }
+    })
+  );
+
+  // Calculate overall average
+  const overallAverage =
+    subjectScores.length > 0
+      ? subjectScores.reduce((sum: number, s: any) => sum + s.termTotal, 0) /
+        subjectScores.length
+      : 0;
+
+  const overallGrade = assignGrade(overallAverage);
+
+  return {
+    student: {
+      id: student.id,
+      firstName: student.firstName,
+      lastName: student.lastName,
+    },
+    term: {
+      id: term.id,
+      name: term.name,
+    },
+    subjects: subjectScores,
+    overallAverage,
+    overallGrade,
+  };
 };
 
