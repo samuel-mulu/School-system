@@ -25,8 +25,11 @@ export const getStudents = async (
       classStatus: req.query.classStatus as any,
       paymentStatus: req.query.paymentStatus as any,
       search: req.query.search as string,
+      classId: req.query.classId as string,
       page: req.query.page ? parseInt(req.query.page as string) : undefined,
       limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
+      userId: req.user?.userId,
+      userRole: req.user?.role,
     };
     const result = await studentService.getStudents(filters);
     sendSuccess(res, result);
@@ -41,7 +44,11 @@ export const getStudentById = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const student = await studentService.getStudentById(req.params.id);
+    const student = await studentService.getStudentById(
+      req.params.id,
+      req.user?.userId,
+      req.user?.role
+    );
     sendSuccess(res, student);
   } catch (error) {
     next(error);

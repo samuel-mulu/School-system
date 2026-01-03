@@ -73,7 +73,6 @@ router.delete(
 router.post(
   '/:classId/subjects',
   authenticate,
-  requireRegistrarOrOwner,
   validate(createSubjectSchema),
   classController.createSubject
 );
@@ -87,7 +86,6 @@ router.get(
 router.patch(
   '/subjects/:subjectId',
   authenticate,
-  requireRegistrarOrOwner,
   validate(updateSubjectSchema),
   classController.updateSubject
 );
@@ -95,7 +93,6 @@ router.patch(
 router.delete(
   '/subjects/:subjectId',
   authenticate,
-  requireRegistrarOrOwner,
   classController.deleteSubject
 );
 

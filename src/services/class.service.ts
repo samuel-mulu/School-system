@@ -4,7 +4,9 @@ import { NotFoundError, ConflictError, BadRequestError } from '../utils/errors';
 interface CreateClassData {
   name: string;
   description?: string;
-  academicYear?: string;
+  academicYear?: string; // Legacy support
+  academicYearId?: string;
+  gradeId?: string;
   headTeacherId?: string;
 }
 
@@ -31,10 +33,37 @@ export const createClass = async (data: CreateClassData) => {
     }
   }
 
+  // Verify academic year exists if provided
+  if (data.academicYearId) {
+    const academicYear = await prisma.academicYear.findUnique({
+      where: { id: data.academicYearId },
+    });
+
+    if (!academicYear) {
+      throw new NotFoundError('Academic year not found');
+    }
+  }
+
+  // Verify grade exists if provided
+  if (data.gradeId) {
+    const grade = await prisma.grade.findUnique({
+      where: { id: data.gradeId },
+    });
+
+    if (!grade) {
+      throw new NotFoundError('Grade not found');
+    }
+  }
+
+  // Prepare data for creation (exclude legacy academicYear string)
+  const { academicYear, ...createData } = data;
+
   const classRecord = await prisma.class.create({
-    data,
+    data: createData,
     include: {
       headTeacher: true,
+      academicYear: true,
+      grade: true,
       studentClasses: {
         where: {
           endDate: null,
@@ -54,12 +83,20 @@ export const getClasses = async (filters?: {
   search?: string;
   page?: number;
   limit?: number;
+  userId?: string;
+  userRole?: string;
 }) => {
   const page = filters?.page || 1;
   const limit = filters?.limit || 50;
   const skip = (page - 1) * limit;
 
   const where: any = {};
+
+  // If user is a TEACHER, only show classes where they are head teacher
+  if (filters?.userRole === 'TEACHER' && filters?.userId) {
+    where.headTeacherId = filters.userId;
+  }
+  // OWNER and REGISTRAR can see all classes
 
   if (filters?.search) {
     where.OR = [
@@ -73,6 +110,8 @@ export const getClasses = async (filters?: {
       where,
       include: {
         headTeacher: true,
+        academicYear: true,
+        grade: true,
         studentClasses: {
           where: {
             endDate: null,
@@ -103,11 +142,17 @@ export const getClasses = async (filters?: {
   };
 };
 
-export const getClassById = async (id: string) => {
+export const getClassById = async (
+  id: string,
+  userId?: string,
+  userRole?: string
+) => {
   const classRecord = await prisma.class.findUnique({
     where: { id },
     include: {
       headTeacher: true,
+      academicYear: true,
+      grade: true,
       studentClasses: {
         include: {
           student: true,
@@ -132,6 +177,14 @@ export const getClassById = async (id: string) => {
   if (!classRecord) {
     throw new NotFoundError('Class not found');
   }
+
+  // If user is a TEACHER, check if they are the head teacher of this class
+  if (userRole === 'TEACHER' && userId) {
+    if (classRecord.headTeacherId !== userId) {
+      throw new NotFoundError('Class not found'); // Return 404 to hide existence
+    }
+  }
+  // OWNER and REGISTRAR can access any class
 
   return classRecord;
 };
@@ -167,11 +220,38 @@ export const updateClass = async (id: string, data: UpdateClassData) => {
     }
   }
 
+  // Verify academic year exists if provided
+  if (data.academicYearId) {
+    const academicYear = await prisma.academicYear.findUnique({
+      where: { id: data.academicYearId },
+    });
+
+    if (!academicYear) {
+      throw new NotFoundError('Academic year not found');
+    }
+  }
+
+  // Verify grade exists if provided
+  if (data.gradeId) {
+    const grade = await prisma.grade.findUnique({
+      where: { id: data.gradeId },
+    });
+
+    if (!grade) {
+      throw new NotFoundError('Grade not found');
+    }
+  }
+
+  // Prepare data for update (exclude legacy academicYear string)
+  const { academicYear, ...updateData } = data;
+
   const updated = await prisma.class.update({
     where: { id },
-    data,
+    data: updateData,
     include: {
       headTeacher: true,
+      academicYear: true,
+      grade: true,
       studentClasses: {
         where: {
           endDate: null,
@@ -215,13 +295,25 @@ export const deleteClass = async (id: string) => {
 };
 
 // Subject management
-export const createSubject = async (classId: string, data: { name: string; code?: string; description?: string }) => {
+export const createSubject = async (
+  classId: string,
+  data: { name: string; code?: string; description?: string },
+  userId?: string,
+  userRole?: string
+) => {
   const classRecord = await prisma.class.findUnique({
     where: { id: classId },
   });
 
   if (!classRecord) {
     throw new NotFoundError('Class not found');
+  }
+
+  // If user is a TEACHER, check if they are the head teacher
+  if (userRole === 'TEACHER' && userId) {
+    if (classRecord.headTeacherId !== userId) {
+      throw new NotFoundError('Class not found');
+    }
   }
 
   // Check if subject already exists for this class
@@ -246,13 +338,24 @@ export const createSubject = async (classId: string, data: { name: string; code?
   return subject;
 };
 
-export const getSubjectsByClass = async (classId: string) => {
+export const getSubjectsByClass = async (
+  classId: string,
+  userId?: string,
+  userRole?: string
+) => {
   const classRecord = await prisma.class.findUnique({
     where: { id: classId },
   });
 
   if (!classRecord) {
     throw new NotFoundError('Class not found');
+  }
+
+  // If user is a TEACHER, check if they are the head teacher
+  if (userRole === 'TEACHER' && userId) {
+    if (classRecord.headTeacherId !== userId) {
+      throw new NotFoundError('Class not found');
+    }
   }
 
   const subjects = await prisma.subject.findMany({
@@ -265,13 +368,28 @@ export const getSubjectsByClass = async (classId: string) => {
   return subjects;
 };
 
-export const updateSubject = async (subjectId: string, data: { name?: string; code?: string; description?: string }) => {
+export const updateSubject = async (
+  subjectId: string,
+  data: { name?: string; code?: string; description?: string },
+  userId?: string,
+  userRole?: string
+) => {
   const subject = await prisma.subject.findUnique({
     where: { id: subjectId },
+    include: {
+      class: true,
+    },
   });
 
   if (!subject) {
     throw new NotFoundError('Subject not found');
+  }
+
+  // If user is a TEACHER, check if they are the head teacher of the class
+  if (userRole === 'TEACHER' && userId) {
+    if (subject.class.headTeacherId !== userId) {
+      throw new NotFoundError('Subject not found');
+    }
   }
 
   // Check name uniqueness if name is being updated
@@ -296,18 +414,30 @@ export const updateSubject = async (subjectId: string, data: { name?: string; co
   return updated;
 };
 
-export const deleteSubject = async (subjectId: string) => {
+export const deleteSubject = async (
+  subjectId: string,
+  userId?: string,
+  userRole?: string
+) => {
   const subject = await prisma.subject.findUnique({
     where: { id: subjectId },
     include: {
       marks: {
         take: 1,
       },
+      class: true,
     },
   });
 
   if (!subject) {
     throw new NotFoundError('Subject not found');
+  }
+
+  // If user is a TEACHER, check if they are the head teacher of the class
+  if (userRole === 'TEACHER' && userId) {
+    if (subject.class.headTeacherId !== userId) {
+      throw new NotFoundError('Subject not found');
+    }
   }
 
   if (subject.marks.length > 0) {

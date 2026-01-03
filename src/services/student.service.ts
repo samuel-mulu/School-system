@@ -40,15 +40,55 @@ interface CreateStudentData {
   previousSchool?: string;
   previousClass?: string;
   transferReason?: string;
+  
+  // Optional class assignment during creation
+  classId?: string;
+  assignClassReason?: string;
 }
 
 interface UpdateStudentData extends Partial<CreateStudentData> {}
 
 export const createStudent = async (data: CreateStudentData) => {
+  // Ensure dateOfBirth is a proper Date object
+  // Handle both Date objects and date strings (YYYY-MM-DD format)
+  let dateOfBirth: Date;
+  if (data.dateOfBirth instanceof Date) {
+    dateOfBirth = data.dateOfBirth;
+  } else if (typeof data.dateOfBirth === 'string') {
+    // If it's a date string like "2026-01-01", ensure it's converted properly
+    // Add time component if missing to make it a valid ISO-8601 DateTime
+    const dateStr = data.dateOfBirth.includes('T') 
+      ? data.dateOfBirth 
+      : `${data.dateOfBirth}T00:00:00.000Z`;
+    dateOfBirth = new Date(dateStr);
+  } else {
+    dateOfBirth = new Date(data.dateOfBirth);
+  }
+  
+  // Validate the date
+  if (isNaN(dateOfBirth.getTime())) {
+    throw new BadRequestError('Invalid date format for dateOfBirth');
+  }
+
+  // Remove classId and assignClassReason from student data (they're not student fields)
+  const { classId, assignClassReason, ...studentData } = data;
+
+  // If classId is provided, verify class exists
+  if (classId) {
+    const classExists = await prisma.class.findUnique({
+      where: { id: classId },
+    });
+
+    if (!classExists) {
+      throw new NotFoundError('Class not found');
+    }
+  }
+
   const student = await prisma.student.create({
     data: {
-      ...data,
-      classStatus: ClassStatus.new,
+      ...studentData,
+      dateOfBirth,
+      classStatus: classId ? ClassStatus.assigned : ClassStatus.new,
       paymentStatus: PaymentStatus.pending,
     },
     include: {
@@ -63,6 +103,33 @@ export const createStudent = async (data: CreateStudentData) => {
     },
   });
 
+  // If classId is provided, assign student to class
+  if (classId) {
+    await prisma.studentClass.create({
+      data: {
+        studentId: student.id,
+        classId,
+        reason: assignClassReason || 'initial assignment',
+        startDate: new Date(),
+      },
+    });
+
+    // Return student with updated class history
+    return prisma.student.findUnique({
+      where: { id: student.id },
+      include: {
+        classHistory: {
+          include: {
+            class: true,
+          },
+          orderBy: {
+            startDate: 'desc',
+          },
+        },
+      },
+    });
+  }
+
   return student;
 };
 
@@ -70,14 +137,47 @@ export const getStudents = async (filters?: {
   classStatus?: ClassStatus;
   paymentStatus?: PaymentStatus;
   search?: string;
+  classId?: string;
   page?: number;
   limit?: number;
+  userId?: string;
+  userRole?: string;
 }) => {
   const page = filters?.page || 1;
   const limit = filters?.limit || 50;
   const skip = (page - 1) * limit;
 
   const where: any = {};
+
+  // If user is a TEACHER, only show students from their assigned classes
+  if (filters?.userRole === 'TEACHER' && filters?.userId) {
+    const teacherClasses = await prisma.class.findMany({
+      where: { headTeacherId: filters.userId },
+      select: { id: true },
+    });
+    const classIds = teacherClasses.map((c) => c.id);
+    
+    if (classIds.length === 0) {
+      // Teacher has no assigned classes, return empty result
+      return {
+        students: [],
+        pagination: {
+          page,
+          limit,
+          total: 0,
+          totalPages: 0,
+        },
+      };
+    }
+
+    // Filter students by teacher's assigned classes
+    where.classHistory = {
+      some: {
+        classId: { in: classIds },
+        endDate: null, // Only active class assignments
+      },
+    };
+  }
 
   if (filters?.classStatus) {
     where.classStatus = filters.classStatus;
@@ -94,6 +194,28 @@ export const getStudents = async (filters?: {
       { email: { contains: filters.search, mode: 'insensitive' } },
       { phone: { contains: filters.search, mode: 'insensitive' } },
     ];
+  }
+
+  // Filter by classId through StudentClass relationship
+  if (filters?.classId) {
+    // If teacher, verify they have access to this class
+    if (filters?.userRole === 'TEACHER' && filters?.userId) {
+      const classRecord = await prisma.class.findUnique({
+        where: { id: filters.classId },
+      });
+      if (!classRecord || classRecord.headTeacherId !== filters.userId) {
+        throw new NotFoundError('Class not found');
+      }
+    }
+    
+    // If teacher already has classHistory filter, replace it with the specific classId
+    // (since we've verified the teacher has access to this class)
+    where.classHistory = {
+      some: {
+        classId: filters.classId,
+        endDate: null, // Only active class assignments
+      },
+    };
   }
 
   const [students, total] = await Promise.all([
@@ -129,7 +251,11 @@ export const getStudents = async (filters?: {
   };
 };
 
-export const getStudentById = async (id: string) => {
+export const getStudentById = async (
+  id: string,
+  userId?: string,
+  userRole?: string
+) => {
   const student = await prisma.student.findUnique({
     where: { id },
     include: {
@@ -171,6 +297,22 @@ export const getStudentById = async (id: string) => {
     throw new NotFoundError('Student not found');
   }
 
+  // If user is a TEACHER, check if student is in one of their assigned classes
+  if (userRole === 'TEACHER' && userId) {
+    const activeClass = student.classHistory.find((ch) => !ch.endDate);
+    if (!activeClass) {
+      throw new NotFoundError('Student not found');
+    }
+    
+    const classRecord = await prisma.class.findUnique({
+      where: { id: activeClass.classId },
+    });
+    
+    if (!classRecord || classRecord.headTeacherId !== userId) {
+      throw new NotFoundError('Student not found');
+    }
+  }
+
   return student;
 };
 
@@ -183,9 +325,31 @@ export const updateStudent = async (id: string, data: UpdateStudentData) => {
     throw new NotFoundError('Student not found');
   }
 
+  // Ensure dateOfBirth is a proper Date object if provided
+  const updateData: any = { ...data };
+  if (data.dateOfBirth) {
+    let dateOfBirth: Date;
+    if (data.dateOfBirth instanceof Date) {
+      dateOfBirth = data.dateOfBirth;
+    } else if (typeof data.dateOfBirth === 'string') {
+      const dateStr = data.dateOfBirth.includes('T') 
+        ? data.dateOfBirth 
+        : `${data.dateOfBirth}T00:00:00.000Z`;
+      dateOfBirth = new Date(dateStr);
+    } else {
+      dateOfBirth = new Date(data.dateOfBirth);
+    }
+    
+    if (isNaN(dateOfBirth.getTime())) {
+      throw new BadRequestError('Invalid date format for dateOfBirth');
+    }
+    
+    updateData.dateOfBirth = dateOfBirth;
+  }
+
   const updated = await prisma.student.update({
     where: { id },
-    data,
+    data: updateData,
     include: {
       classHistory: {
         include: {

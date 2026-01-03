@@ -37,6 +37,25 @@ enum AttendanceStatus {
   late
 }
 
+// Academic year status
+enum AcademicYearStatus {
+  ACTIVE
+  CLOSED
+}
+
+// Term status
+enum TermStatus {
+  OPEN
+  CLOSED
+}
+
+// Promotion status
+enum PromotionStatus {
+  PROMOTED
+  REPEATED
+  GRADUATED
+}
+
 // User model for authentication
 model User {
   id        String   @id @default(uuid())
@@ -116,18 +135,67 @@ model Student {
   @@index([firstName, lastName])
 }
 
-// Class model
-model Class {
+// Grade model - ordered sequence for grade progression
+model Grade {
+  id        String   @id @default(uuid())
+  name      String   @unique // e.g., "Grade 1", "Grade 2"
+  order     Int      @unique // Sequential order for progression
+  isHighest Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  classes Class[]
+
+  @@index([order])
+  @@index([isHighest])
+}
+
+// AcademicYear model - explicit academic year entity
+model AcademicYear {
+  id        String            @id @default(uuid())
+  name      String            @unique // e.g., "2024-2025"
+  startDate DateTime
+  endDate   DateTime?
+  status    AcademicYearStatus @default(CLOSED)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  // Relations
+  classes Class[]
+  terms   Term[]
+
+  @@index([status])
+  @@index([name])
+}
+
+// SystemSettings model - configuration storage
+model SystemSettings {
   id          String   @id @default(uuid())
-  name        String   @unique // e.g., "Class A", "Grade 1"
+  key         String   @unique
+  value       String
   description String?
-  academicYear String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([key])
+}
+
+// Class model
+model Class {
+  id            String   @id @default(uuid())
+  name          String   @unique // e.g., "Class A", "Grade 1A"
+  description   String?
+  academicYearId String?
+  gradeId       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Relations
   headTeacherId String?
   headTeacher   User?   @relation("HeadTeacher", fields: [headTeacherId], references: [id])
+  academicYear AcademicYear? @relation(fields: [academicYearId], references: [id])
+  grade        Grade?        @relation(fields: [gradeId], references: [id])
   
   studentClasses StudentClass[]
   subjects       Subject[]
@@ -135,18 +203,21 @@ model Class {
   marks          Mark[]
 
   @@index([name])
+  @@index([academicYearId])
+  @@index([gradeId])
 }
 
 // Student-Class relationship with history preservation
 model StudentClass {
-  id        String   @id @default(uuid())
-  studentId String
-  classId   String
-  startDate DateTime @default(now())
-  endDate   DateTime? // NULL means active assignment
-  reason    String   // e.g., "initial assignment", "transfer"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String          @id @default(uuid())
+  studentId      String
+  classId        String
+  startDate      DateTime        @default(now())
+  endDate        DateTime?       // NULL means active assignment
+  reason         String          // e.g., "initial assignment", "transfer"
+  promotionStatus PromotionStatus? // PROMOTED, REPEATED, GRADUATED, or null for active
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   // Relations
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
@@ -155,6 +226,7 @@ model StudentClass {
   @@index([studentId])
   @@index([classId])
   @@index([studentId, classId])
+  @@index([promotionStatus])
   @@unique([studentId, classId, startDate])
 }
 
@@ -193,16 +265,23 @@ model Subject {
 
 // Term model - academic terms (Term 1, Term 2)
 model Term {
-  id        String   @id @default(uuid())
-  name      String   @unique // "Term 1", "Term 2"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String          @id @default(uuid())
+  name          String          // "Term 1", "Term 2" (not unique anymore)
+  academicYearId String
+  startDate     DateTime        @db.Date
+  endDate       DateTime?       @db.Date
+  status        TermStatus      @default(OPEN)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
   // Relations
-  subExams SubExam[]
-  marks    Mark[]
+  academicYear  AcademicYear    @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  subExams      SubExam[]
+  marks         Mark[]
 
-  @@index([name])
+  @@unique([name, academicYearId]) // Term name unique per academic year
+  @@index([academicYearId])
+  @@index([status])
 }
 
 // SubExam model - sub-examinations per subject and term

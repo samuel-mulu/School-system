@@ -1,0 +1,48 @@
+import * as gradeService from '../services/grade.service';
+import { sendSuccess } from '../utils/responses';
+export const createGrade = async (req, res, next) => {
+    try {
+        const grade = await gradeService.createGrade(req.body);
+        sendSuccess(res, grade, 'Grade created successfully', 201);
+    }
+    catch (error) {
+        next(error);
+    }
+};
+export const getGrades = async (req, res, next) => {
+    try {
+        const grades = await gradeService.getGrades();
+        sendSuccess(res, grades);
+    }
+    catch (error) {
+        next(error);
+    }
+};
+export const getGradeById = async (req, res, next) => {
+    try {
+        const grade = await gradeService.getGradeById(req.params.id);
+        sendSuccess(res, grade);
+    }
+    catch (error) {
+        next(error);
+    }
+};
+export const updateGrade = async (req, res, next) => {
+    try {
+        const grade = await gradeService.updateGrade(req.params.id, req.body);
+        sendSuccess(res, grade, 'Grade updated successfully');
+    }
+    catch (error) {
+        next(error);
+    }
+};
+export const deleteGrade = async (req, res, next) => {
+    try {
+        const result = await gradeService.deleteGrade(req.params.id);
+        sendSuccess(res, result, 'Grade deleted successfully');
+    }
+    catch (error) {
+        next(error);
+    }
+};
+//# sourceMappingURL=grade.controller.js.map

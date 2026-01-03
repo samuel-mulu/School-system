@@ -25,6 +25,8 @@ export const getClasses = async (
       search: req.query.search as string,
       page: req.query.page ? parseInt(req.query.page as string) : undefined,
       limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
+      userId: req.user?.userId,
+      userRole: req.user?.role,
     };
     const result = await classService.getClasses(filters);
     sendSuccess(res, result);
@@ -39,7 +41,11 @@ export const getClassById = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const classRecord = await classService.getClassById(req.params.id);
+    const classRecord = await classService.getClassById(
+      req.params.id,
+      req.user?.userId,
+      req.user?.role
+    );
     sendSuccess(res, classRecord);
   } catch (error) {
     next(error);
@@ -79,7 +85,12 @@ export const createSubject = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const subject = await classService.createSubject(req.params.classId, req.body);
+    const subject = await classService.createSubject(
+      req.params.classId,
+      req.body,
+      req.user?.userId,
+      req.user?.role
+    );
     sendSuccess(res, subject, 'Subject created successfully', 201);
   } catch (error) {
     next(error);
@@ -92,7 +103,11 @@ export const getSubjectsByClass = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const subjects = await classService.getSubjectsByClass(req.params.classId);
+    const subjects = await classService.getSubjectsByClass(
+      req.params.classId,
+      req.user?.userId,
+      req.user?.role
+    );
     sendSuccess(res, subjects);
   } catch (error) {
     next(error);
@@ -105,7 +120,12 @@ export const updateSubject = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const subject = await classService.updateSubject(req.params.subjectId, req.body);
+    const subject = await classService.updateSubject(
+      req.params.subjectId,
+      req.body,
+      req.user?.userId,
+      req.user?.role
+    );
     sendSuccess(res, subject, 'Subject updated successfully');
   } catch (error) {
     next(error);
@@ -118,7 +138,11 @@ export const deleteSubject = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const result = await classService.deleteSubject(req.params.subjectId);
+    const result = await classService.deleteSubject(
+      req.params.subjectId,
+      req.user?.userId,
+      req.user?.role
+    );
     sendSuccess(res, result, 'Subject deleted successfully');
   } catch (error) {
     next(error);

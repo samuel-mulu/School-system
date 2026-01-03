@@ -8,7 +8,11 @@ export const markAttendance = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const attendance = await attendanceService.markAttendance(req.body);
+    const attendance = await attendanceService.markAttendance(
+      req.body,
+      req.user?.userId,
+      req.user?.role
+    );
     sendSuccess(res, attendance, 'Attendance marked successfully', 201);
   } catch (error) {
     next(error);
@@ -25,7 +29,9 @@ export const markBulkAttendance = async (
     const results = await attendanceService.markBulkAttendance(
       classId,
       new Date(date),
-      attendanceData
+      attendanceData,
+      req.user?.userId,
+      req.user?.role
     );
     sendSuccess(res, results, 'Bulk attendance marked successfully');
   } catch (error) {
@@ -48,6 +54,8 @@ export const getAttendance = async (
       status: req.query.status as any,
       page: req.query.page ? parseInt(req.query.page as string) : undefined,
       limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
+      userId: req.user?.userId,
+      userRole: req.user?.role,
     };
     const result = await attendanceService.getAttendance(filters);
     sendSuccess(res, result);
@@ -62,7 +70,11 @@ export const getAttendanceById = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const attendance = await attendanceService.getAttendanceById(req.params.id);
+    const attendance = await attendanceService.getAttendanceById(
+      req.params.id,
+      req.user?.userId,
+      req.user?.role
+    );
     sendSuccess(res, attendance);
   } catch (error) {
     next(error);
@@ -77,7 +89,12 @@ export const getClassAttendanceForDate = async (
   try {
     const { classId } = req.params;
     const date = req.query.date ? new Date(req.query.date as string) : new Date();
-    const result = await attendanceService.getClassAttendanceForDate(classId, date);
+    const result = await attendanceService.getClassAttendanceForDate(
+      classId,
+      date,
+      req.user?.userId,
+      req.user?.role
+    );
     sendSuccess(res, result);
   } catch (error) {
     next(error);
@@ -90,7 +107,12 @@ export const updateAttendance = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const attendance = await attendanceService.updateAttendance(req.params.id, req.body);
+    const attendance = await attendanceService.updateAttendance(
+      req.params.id,
+      req.body,
+      req.user?.userId,
+      req.user?.role
+    );
     sendSuccess(res, attendance, 'Attendance updated successfully');
   } catch (error) {
     next(error);
@@ -105,6 +127,24 @@ export const deleteAttendance = async (
   try {
     const result = await attendanceService.deleteAttendance(req.params.id);
     sendSuccess(res, result, 'Attendance deleted successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getClassAttendanceDates = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { classId } = req.params;
+    const dates = await attendanceService.getClassAttendanceDates(
+      classId,
+      req.user?.userId,
+      req.user?.role
+    );
+    sendSuccess(res, dates);
   } catch (error) {
     next(error);
   }

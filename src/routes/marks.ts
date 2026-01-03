@@ -27,6 +27,18 @@ const recordMarkSchema = z.object({
   }),
 });
 
+const recordBulkMarksSchema = z.object({
+  body: z.object({
+    marksData: z.array(
+      z.object({
+        studentId: z.string().uuid(),
+        score: z.number().min(0),
+        notes: z.string().optional(),
+      })
+    ),
+  }),
+});
+
 const updateMarkSchema = z.object({
   body: z.object({
     score: z.number().min(0).optional(),
@@ -62,6 +74,14 @@ router.post(
   requireTeacher,
   validate(recordMarkSchema),
   marksController.recordMark
+);
+
+router.post(
+  '/record/bulk/subexam/:subExamId',
+  authenticate,
+  requireTeacher,
+  validate(recordBulkMarksSchema),
+  marksController.recordBulkMarks
 );
 
 router.get(

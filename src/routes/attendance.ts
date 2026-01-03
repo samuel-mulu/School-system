@@ -74,6 +74,12 @@ router.get(
   attendanceController.getClassAttendanceForDate
 );
 
+router.get(
+  '/class/:classId/dates',
+  authenticate,
+  attendanceController.getClassAttendanceDates
+);
+
 router.patch(
   '/:id',
   authenticate,

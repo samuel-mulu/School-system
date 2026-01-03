@@ -12,7 +12,11 @@ interface CreateMarkData {
   notes?: string;
 }
 
-export const createMark = async (data: CreateMarkData) => {
+export const createMark = async (
+  data: CreateMarkData,
+  userId?: string,
+  userRole?: string
+) => {
   // Verify student exists
   const student = await prisma.student.findUnique({
     where: { id: data.studentId },
@@ -29,6 +33,13 @@ export const createMark = async (data: CreateMarkData) => {
 
   if (!classRecord) {
     throw new NotFoundError('Class not found');
+  }
+
+  // If user is a TEACHER, check if they are the head teacher
+  if (userRole === 'TEACHER' && userId) {
+    if (classRecord.headTeacherId !== userId) {
+      throw new NotFoundError('Class not found');
+    }
   }
 
   // Verify subject exists and belongs to class
@@ -161,7 +172,9 @@ export const recordMark = async (
   studentId: string,
   subExamId: string,
   score: number,
-  notes?: string
+  notes?: string,
+  userId?: string,
+  userRole?: string
 ) => {
   // Get sub-exam to get related IDs
   const subExam = await prisma.subExam.findUnique({
@@ -179,8 +192,38 @@ export const recordMark = async (
     throw new NotFoundError('Sub-exam not found');
   }
 
+  // If user is a TEACHER, verify they are head teacher of the class
+  if (userRole === 'TEACHER' && userId) {
+    if (subExam.subject.class.headTeacherId !== userId) {
+      throw new NotFoundError('Sub-exam not found');
+    }
+  }
+
+  // Check if mark already exists
+  const existing = await prisma.mark.findUnique({
+    where: {
+      studentId_subjectId_termId_subExamId: {
+        studentId,
+        subjectId: subExam.subjectId,
+        termId: subExam.termId,
+        subExamId,
+      },
+    },
+  });
+
+  if (existing) {
+    // Update existing mark
+    return updateMark(
+      existing.id,
+      { score, notes: notes || undefined },
+      userId,
+      userRole
+    );
+  }
+
   // Use createMark with all required fields
-    return createMark({
+  return createMark(
+    {
       studentId,
       classId: subExam.subject.classId,
       subjectId: subExam.subjectId,
@@ -188,7 +231,64 @@ export const recordMark = async (
       subExamId,
       score,
       notes: notes || undefined,
-    });
+    },
+    userId,
+    userRole
+  );
+};
+
+export const recordBulkMarks = async (
+  subExamId: string,
+  marksData: Array<{ studentId: string; score: number; notes?: string }>,
+  userId?: string,
+  userRole?: string
+) => {
+  // Get sub-exam to get related IDs
+  const subExam = await prisma.subExam.findUnique({
+    where: { id: subExamId },
+    include: {
+      subject: {
+        include: {
+          class: true,
+        },
+      },
+    },
+  });
+
+  if (!subExam) {
+    throw new NotFoundError('Sub-exam not found');
+  }
+
+  // If user is a TEACHER, verify they are head teacher of the class
+  if (userRole === 'TEACHER' && userId) {
+    if (subExam.subject.class.headTeacherId !== userId) {
+      throw new NotFoundError('Sub-exam not found');
+    }
+  }
+
+  const results = [];
+
+  for (const markData of marksData) {
+    try {
+      const mark = await recordMark(
+        markData.studentId,
+        subExamId,
+        markData.score,
+        markData.notes,
+        userId,
+        userRole
+      );
+      results.push({ success: true, data: mark });
+    } catch (error: any) {
+      results.push({
+        success: false,
+        studentId: markData.studentId,
+        error: error.message,
+      });
+    }
+  }
+
+  return results;
 };
 
 export const getMarks = async (filters?: {
@@ -286,7 +386,11 @@ export const getMarks = async (filters?: {
   };
 };
 
-export const getMarkById = async (id: string) => {
+export const getMarkById = async (
+  id: string,
+  userId?: string,
+  userRole?: string
+) => {
   const mark = await prisma.mark.findUnique({
     where: { id },
     include: {
@@ -300,6 +404,13 @@ export const getMarkById = async (id: string) => {
 
   if (!mark) {
     throw new NotFoundError('Mark not found');
+  }
+
+  // If user is a TEACHER, check if they are the head teacher of the class
+  if (userRole === 'TEACHER' && userId) {
+    if (mark.class.headTeacherId !== userId) {
+      throw new NotFoundError('Mark not found');
+    }
   }
 
   return mark;
@@ -403,7 +514,22 @@ export const getStudentMarksByTerm = async (studentId: string, termId: string) =
   };
 };
 
-export const getClassMarksByTerm = async (classId: string, termId: string) => {
+export const getClassMarksByTerm = async (
+  classId: string,
+  termId: string,
+  subjectId?: string,
+  userId?: string,
+  userRole?: string
+) => {
+  // If user is a TEACHER, check if they are the head teacher
+  if (userRole === 'TEACHER' && userId) {
+    const classRecord = await prisma.class.findUnique({
+      where: { id: classId },
+    });
+    if (!classRecord || classRecord.headTeacherId !== userId) {
+      throw new NotFoundError('Class not found');
+    }
+  }
   const classRecord = await prisma.class.findUnique({
     where: { id: classId },
   });
@@ -420,11 +546,17 @@ export const getClassMarksByTerm = async (classId: string, termId: string) => {
     throw new NotFoundError('Term not found');
   }
 
+  const where: any = {
+    classId,
+    termId,
+  };
+
+  if (subjectId) {
+    where.subjectId = subjectId;
+  }
+
   const marks = await prisma.mark.findMany({
-    where: {
-      classId,
-      termId,
-    },
+    where,
     include: {
       student: {
         select: {
@@ -494,17 +626,27 @@ export const updateMark = async (
     score?: number;
     grade?: string;
     notes?: string;
-  }
+  },
+  userId?: string,
+  userRole?: string
 ) => {
   const mark = await prisma.mark.findUnique({
     where: { id },
     include: {
       subExam: true,
+      class: true,
     },
   });
 
   if (!mark) {
     throw new NotFoundError('Mark not found');
+  }
+
+  // If user is a TEACHER, check if they are the head teacher of the class
+  if (userRole === 'TEACHER' && userId) {
+    if (mark.class.headTeacherId !== userId) {
+      throw new NotFoundError('Mark not found');
+    }
   }
 
   // Validate score if provided
@@ -570,13 +712,27 @@ export const updateMark = async (
   return updated;
 };
 
-export const deleteMark = async (id: string) => {
+export const deleteMark = async (
+  id: string,
+  userId?: string,
+  userRole?: string
+) => {
   const mark = await prisma.mark.findUnique({
     where: { id },
+    include: {
+      class: true,
+    },
   });
 
   if (!mark) {
     throw new NotFoundError('Mark not found');
+  }
+
+  // If user is a TEACHER, check if they are the head teacher of the class
+  if (userRole === 'TEACHER' && userId) {
+    if (mark.class.headTeacherId !== userId) {
+      throw new NotFoundError('Mark not found');
+    }
   }
 
   await prisma.mark.delete({

@@ -10,7 +10,11 @@ interface CreateAttendanceData {
   notes?: string;
 }
 
-export const markAttendance = async (data: CreateAttendanceData) => {
+export const markAttendance = async (
+  data: CreateAttendanceData,
+  userId?: string,
+  userRole?: string
+) => {
   // Verify student exists
   const student = await prisma.student.findUnique({
     where: { id: data.studentId },
@@ -27,6 +31,13 @@ export const markAttendance = async (data: CreateAttendanceData) => {
 
   if (!classRecord) {
     throw new NotFoundError('Class not found');
+  }
+
+  // If user is a TEACHER, check if they are the head teacher
+  if (userRole === 'TEACHER' && userId) {
+    if (classRecord.headTeacherId !== userId) {
+      throw new NotFoundError('Class not found');
+    }
   }
 
   // Check if student is assigned to this class
@@ -116,7 +127,9 @@ export const markAttendance = async (data: CreateAttendanceData) => {
 export const markBulkAttendance = async (
   classId: string,
   date: Date,
-  attendanceData: Array<{ studentId: string; status: AttendanceStatus; notes?: string }>
+  attendanceData: Array<{ studentId: string; status: AttendanceStatus; notes?: string }>,
+  userId?: string,
+  userRole?: string
 ) => {
   // Verify class exists
   const classRecord = await prisma.class.findUnique({
@@ -125,6 +138,13 @@ export const markBulkAttendance = async (
 
   if (!classRecord) {
     throw new NotFoundError('Class not found');
+  }
+
+  // If user is a TEACHER, check if they are the head teacher
+  if (userRole === 'TEACHER' && userId) {
+    if (classRecord.headTeacherId !== userId) {
+      throw new NotFoundError('Class not found');
+    }
   }
 
   const attendanceDate = new Date(date);
@@ -140,7 +160,7 @@ export const markBulkAttendance = async (
         date: attendanceDate,
         status: item.status,
         notes: item.notes,
-      });
+      }, userId, userRole);
       results.push({ success: true, data: attendance });
     } catch (error: any) {
       results.push({
@@ -163,6 +183,8 @@ export const getAttendance = async (filters?: {
   status?: AttendanceStatus;
   page?: number;
   limit?: number;
+  userId?: string;
+  userRole?: string;
 }) => {
   const page = filters?.page || 1;
   const limit = filters?.limit || 50;
@@ -170,11 +192,30 @@ export const getAttendance = async (filters?: {
 
   const where: any = {};
 
+  // If user is a TEACHER, only show attendance for their assigned classes
+  if (filters?.userRole === 'TEACHER' && filters?.userId) {
+    const teacherClasses = await prisma.class.findMany({
+      where: { headTeacherId: filters.userId },
+      select: { id: true },
+    });
+    const classIds = teacherClasses.map((c) => c.id);
+    where.classId = { in: classIds };
+  }
+
   if (filters?.studentId) {
     where.studentId = filters.studentId;
   }
 
   if (filters?.classId) {
+    // If teacher, verify they have access to this class
+    if (filters?.userRole === 'TEACHER' && filters?.userId) {
+      const classRecord = await prisma.class.findUnique({
+        where: { id: filters.classId },
+      });
+      if (!classRecord || classRecord.headTeacherId !== filters.userId) {
+        throw new NotFoundError('Class not found');
+      }
+    }
     where.classId = filters.classId;
   }
 
@@ -238,7 +279,11 @@ export const getAttendance = async (filters?: {
   };
 };
 
-export const getAttendanceById = async (id: string) => {
+export const getAttendanceById = async (
+  id: string,
+  userId?: string,
+  userRole?: string
+) => {
   const attendance = await prisma.attendance.findUnique({
     where: { id },
     include: {
@@ -251,10 +296,22 @@ export const getAttendanceById = async (id: string) => {
     throw new NotFoundError('Attendance record not found');
   }
 
+  // If user is a TEACHER, check if they are the head teacher of the class
+  if (userRole === 'TEACHER' && userId) {
+    if (attendance.class.headTeacherId !== userId) {
+      throw new NotFoundError('Attendance record not found');
+    }
+  }
+
   return attendance;
 };
 
-export const getClassAttendanceForDate = async (classId: string, date: Date) => {
+export const getClassAttendanceForDate = async (
+  classId: string,
+  date: Date,
+  userId?: string,
+  userRole?: string
+) => {
   const classRecord = await prisma.class.findUnique({
     where: { id: classId },
     include: {
@@ -271,6 +328,13 @@ export const getClassAttendanceForDate = async (classId: string, date: Date) => 
 
   if (!classRecord) {
     throw new NotFoundError('Class not found');
+  }
+
+  // If user is a TEACHER, check if they are the head teacher
+  if (userRole === 'TEACHER' && userId) {
+    if (classRecord.headTeacherId !== userId) {
+      throw new NotFoundError('Class not found');
+    }
   }
 
   const attendanceDate = new Date(date);
@@ -316,14 +380,26 @@ export const getClassAttendanceForDate = async (classId: string, date: Date) => 
 
 export const updateAttendance = async (
   id: string,
-  data: { status?: AttendanceStatus; notes?: string }
+  data: { status?: AttendanceStatus; notes?: string },
+  userId?: string,
+  userRole?: string
 ) => {
   const attendance = await prisma.attendance.findUnique({
     where: { id },
+    include: {
+      class: true,
+    },
   });
 
   if (!attendance) {
     throw new NotFoundError('Attendance record not found');
+  }
+
+  // If user is a TEACHER, check if they are the head teacher of the class
+  if (userRole === 'TEACHER' && userId) {
+    if (attendance.class.headTeacherId !== userId) {
+      throw new NotFoundError('Attendance record not found');
+    }
   }
 
   const updated = await prisma.attendance.update({
@@ -363,5 +439,53 @@ export const deleteAttendance = async (id: string) => {
   });
 
   return { message: 'Attendance record deleted successfully' };
+};
+
+export const getClassAttendanceDates = async (
+  classId: string,
+  userId?: string,
+  userRole?: string
+) => {
+  // Verify class exists
+  const classRecord = await prisma.class.findUnique({
+    where: { id: classId },
+  });
+
+  if (!classRecord) {
+    throw new NotFoundError('Class not found');
+  }
+
+  // If user is a TEACHER, check if they are the head teacher
+  if (userRole === 'TEACHER' && userId) {
+    if (classRecord.headTeacherId !== userId) {
+      throw new NotFoundError('Class not found');
+    }
+  }
+
+  // Get distinct dates for this class, ordered by date descending
+  const attendanceRecords = await prisma.attendance.findMany({
+    where: {
+      classId,
+    },
+    select: {
+      date: true,
+    },
+    distinct: ['date'],
+    orderBy: {
+      date: 'desc',
+    },
+  });
+
+  // Extract unique dates and format them
+  const dates = attendanceRecords.map((record) => {
+    const date = new Date(record.date);
+    date.setHours(0, 0, 0, 0);
+    return date.toISOString().split('T')[0];
+  });
+
+  // Remove duplicates (in case of any timezone issues)
+  const uniqueDates = Array.from(new Set(dates));
+
+  return uniqueDates;
 };
 

@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import * as studentController from '../controllers/student.controller';
-import { validate } from '../middleware/validation';
-import { authenticate } from '../middleware/auth';
-import { requireRegistrarOrOwner } from '../middleware/role';
+import * as studentController from '../controllers/student.controller.js';
+import { validate } from '../middleware/validation.js';
+import { authenticate } from '../middleware/auth.js';
+import { requireRegistrarOrOwner } from '../middleware/role.js';
 
 const router = Router();
 
@@ -36,6 +36,8 @@ const createStudentSchema = z.object({
     previousSchool: z.string().optional(),
     previousClass: z.string().optional(),
     transferReason: z.string().optional(),
+    classId: z.string().uuid().optional(),
+    assignClassReason: z.string().optional(),
   }),
 });
 
@@ -69,14 +71,12 @@ router.post(
 router.get(
   '/',
   authenticate,
-  requireRegistrarOrOwner,
   studentController.getStudents
 );
 
 router.get(
   '/:id',
   authenticate,
-  requireRegistrarOrOwner,
   studentController.getStudentById
 );
 
@@ -96,7 +96,7 @@ router.post(
   studentController.assignStudentToClass
 );
 
-import { requireRole } from '../middleware/role';
+import { requireRole } from '../middleware/role.js';
 
 router.post(
   '/:id/transfer',
@@ -114,4 +114,3 @@ router.delete(
 );
 
 export default router;
-
