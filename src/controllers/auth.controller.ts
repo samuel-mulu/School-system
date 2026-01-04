@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
-import * as authService from '../services/auth.service';
-import { sendSuccess } from '../utils/responses';
-import { getCookieOptions } from '../config/jwt';
+import * as authService from "../services/auth.service.js";
+import { sendSuccess } from "../utils/responses.js";
+import { getCookieOptions } from "../config/jwt.js";
 
 export const register = async (
   req: Request,
@@ -34,7 +34,7 @@ export const login = async (
 };
 
 export const logout = async (
-  req: Request,
+  _req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {

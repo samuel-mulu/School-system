@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import * as marksController from '../controllers/marks.controller';
-import { validate } from '../middleware/validation';
-import { authenticate } from '../middleware/auth';
-import { requireTeacher } from '../middleware/role';
+import * as marksController from "../controllers/marks.controller.js";
+import { validate } from "../middleware/validation.js";
+import { authenticate } from "../middleware/auth.js";
+import { requireTeacher } from "../middleware/role.js";
 
 const router = Router();
 

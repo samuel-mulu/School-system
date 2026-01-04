@@ -1,5 +1,5 @@
-import { prisma } from '../config/db';
-import { NotFoundError } from '../utils/errors';
+import { prisma } from "../config/db.js";
+import { NotFoundError } from "../utils/errors.js";
 
 /**
  * Calculate weighted score contribution

@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
-import * as settingsService from '../services/settings.service';
-import { sendSuccess } from '../utils/responses';
+import * as settingsService from "../services/settings.service.js";
+import { sendSuccess } from "../utils/responses.js";
 
 export const getSetting = async (
   req: Request,
@@ -16,7 +16,7 @@ export const getSetting = async (
 };
 
 export const getAllSettings = async (
-  req: Request,
+  _req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {

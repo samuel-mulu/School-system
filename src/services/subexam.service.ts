@@ -1,5 +1,5 @@
-import { prisma } from '../config/db';
-import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors';
+import { prisma } from "../config/db.js";
+import { NotFoundError, BadRequestError, ConflictError } from "../utils/errors.js";
 
 interface CreateSubExamData {
   subjectId: string;

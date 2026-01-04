@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import * as settingsController from '../controllers/settings.controller.js';
-import { validate } from '../middleware/validation.js';
-import { authenticate } from '../middleware/auth.js';
-import { requireOwner } from '../middleware/role.js';
+import * as settingsController from "../controllers/settings.controller.js";
+import { validate } from "../middleware/validation.js";
+import { authenticate } from "../middleware/auth.js";
+import { requireOwner } from "../middleware/role.js";
 
 const router = Router();
 

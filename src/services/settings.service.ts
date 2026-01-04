@@ -1,5 +1,5 @@
-import { prisma } from '../config/db';
-import { NotFoundError } from '../utils/errors';
+import { prisma } from "../config/db.js";
+import { NotFoundError } from "../utils/errors.js";
 
 const DEFAULT_PROMOTION_THRESHOLD = '60.0';
 

@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
-import { verifyToken } from '../config/jwt';
-import type { JWTPayload } from '../config/jwt';
-import { UnauthorizedError } from '../utils/errors';
+import { verifyToken } from "../config/jwt.js";
+import type { JWTPayload } from "../config/jwt.js";
+import { UnauthorizedError } from "../utils/errors.js";
 
 // Extend Express Request to include user
 declare global {
@@ -14,7 +14,7 @@ declare global {
 
 export const authenticate = (
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ): void => {
   try {

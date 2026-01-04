@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import * as attendanceController from '../controllers/attendance.controller';
-import { validate } from '../middleware/validation';
-import { authenticate } from '../middleware/auth';
-import { requireTeacher, requireRegistrarOrOwner } from '../middleware/role';
+import * as attendanceController from "../controllers/attendance.controller.js";
+import { validate } from "../middleware/validation.js";
+import { authenticate } from "../middleware/auth.js";
+import { requireTeacher, requireRegistrarOrOwner } from "../middleware/role.js";
 
 const router = Router();
 

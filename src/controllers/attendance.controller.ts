@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
-import * as attendanceService from '../services/attendance.service';
-import { sendSuccess } from '../utils/responses';
+import * as attendanceService from "../services/attendance.service.js";
+import { sendSuccess } from "../utils/responses.js";
 
 export const markAttendance = async (
   req: Request,

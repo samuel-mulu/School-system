@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
-import * as subExamService from '../services/subexam.service';
-import { sendSuccess } from '../utils/responses';
+import * as subExamService from "../services/subexam.service.js";
+import { sendSuccess } from "../utils/responses.js";
 
 export const createSubExam = async (
   req: Request,

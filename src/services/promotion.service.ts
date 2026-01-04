@@ -1,9 +1,9 @@
-import { prisma } from '../config/db';
-import { NotFoundError, BadRequestError } from '../utils/errors';
-import { calculateYearAverage } from './calculation.service';
-import { getNextGrade, getHighestGrade } from './grade.service';
-import { getActiveAcademicYear, createAcademicYear } from './academicYear.service';
-import { getSetting } from './settings.service';
+import { prisma } from "../config/db.js";
+import { NotFoundError, BadRequestError } from "../utils/errors.js";
+import { calculateYearAverage } from "./calculation.service.js";
+import { getNextGrade, getHighestGrade } from "./grade.service.js";
+import { getActiveAcademicYear, createAcademicYear } from "./academicYear.service.js";
+import { getSetting } from "./settings.service.js";
 // Note: After running 'npx prisma generate', you can import Prisma enums from '../generated/prisma/client'
 
 interface PromotionPreviewStudent {
@@ -55,7 +55,7 @@ export const calculateStudentYearlyAverage = async (
 
   // Calculate yearly average for each subject
   const subjectAverages = await Promise.all(
-    subjects.map(async (subject) => {
+    subjects.map(async (subject: { id: string }) => {
       try {
         const yearResult = await calculateYearAverage(studentId, subject.id);
         return yearResult.yearAverage;
@@ -140,7 +140,7 @@ export const getPromotionPreview = async (): Promise<PromotionPreview> => {
 
   // Calculate outcomes for each student
   const students: PromotionPreviewStudent[] = await Promise.all(
-    activeStudentClasses.map(async (sc) => {
+    activeStudentClasses.map(async (sc: { studentId: string; classId: string; class: { name: string; grade: { id: string; name: string } | null }; student: { firstName: string; lastName: string } }) => {
       const overallAverage = await calculateStudentYearlyAverage(
         sc.studentId,
         sc.classId

@@ -1,9 +1,9 @@
 import type { Request, Response, NextFunction } from 'express';
-import * as promotionService from '../services/promotion.service';
-import { sendSuccess } from '../utils/responses';
+import * as promotionService from "../services/promotion.service.js";
+import { sendSuccess } from "../utils/responses.js";
 
 export const getPromotionPreview = async (
-  req: Request,
+  _req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
@@ -16,7 +16,7 @@ export const getPromotionPreview = async (
 };
 
 export const promoteStudents = async (
-  req: Request,
+  _req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {

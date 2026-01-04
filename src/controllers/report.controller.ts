@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
-import * as reportService from '../services/report.service';
-import { sendSuccess } from '../utils/responses';
+import * as reportService from "../services/report.service.js";
+import { sendSuccess } from "../utils/responses.js";
 
 export const getStudentReport = async (
   req: Request,

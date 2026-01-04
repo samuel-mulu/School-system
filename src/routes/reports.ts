@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import * as reportController from '../controllers/report.controller';
-import { authenticate } from '../middleware/auth';
-import { requireRegistrarOrOwner } from '../middleware/role';
+import * as reportController from "../controllers/report.controller.js";
+import { authenticate } from "../middleware/auth.js";
+import { requireRegistrarOrOwner } from "../middleware/role.js";
 
 const router = Router();
 

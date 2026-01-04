@@ -1,6 +1,6 @@
-import { prisma } from '../config/db';
-import { PaymentStatus } from '../generated/prisma/enums';
-import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors';
+import { prisma } from "../config/db.js";
+import { PaymentStatus } from "../generated/prisma/enums.js";
+import { NotFoundError, BadRequestError, ConflictError } from "../utils/errors.js";
 
 interface CreatePaymentData {
   studentId: string;

@@ -1,8 +1,8 @@
 import bcrypt from 'bcrypt';
-import { prisma } from '../config/db';
-import { UserRole } from '../generated/prisma/enums';
-import { generateToken } from '../config/jwt';
-import { UnauthorizedError, ConflictError, NotFoundError } from '../utils/errors';
+import { prisma } from "../config/db.js";
+import { UserRole } from "../generated/prisma/enums.js";
+import { generateToken } from "../config/jwt.js";
+import { UnauthorizedError, ConflictError, NotFoundError } from "../utils/errors.js";
 
 interface RegisterData {
   email: string;

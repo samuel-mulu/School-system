@@ -1,6 +1,6 @@
-import { prisma } from '../config/db';
-import { AttendanceStatus } from '../generated/prisma/enums';
-import { NotFoundError, ConflictError, BadRequestError } from '../utils/errors';
+import { prisma } from "../config/db.js";
+import { AttendanceStatus } from "../generated/prisma/enums.js";
+import { NotFoundError, BadRequestError } from "../utils/errors.js";
 
 interface CreateAttendanceData {
   studentId: string;
@@ -198,7 +198,7 @@ export const getAttendance = async (filters?: {
       where: { headTeacherId: filters.userId },
       select: { id: true },
     });
-    const classIds = teacherClasses.map((c) => c.id);
+    const classIds = teacherClasses.map((c: { id: string }) => c.id);
     where.classId = { in: classIds };
   }
 
@@ -359,11 +359,11 @@ export const getClassAttendanceForDate = async (
 
   // Create a map of studentId -> attendance
   const attendanceMap = new Map(
-    attendanceRecords.map((record) => [record.studentId, record])
+    attendanceRecords.map((record: { studentId: string }) => [record.studentId, record])
   );
 
   // Combine with all students in the class
-  const result = classRecord.studentClasses.map((sc) => ({
+  const result = classRecord.studentClasses.map((sc: { student: unknown; studentId: string }) => ({
     student: sc.student,
     attendance: attendanceMap.get(sc.studentId) || null,
   }));
@@ -477,7 +477,7 @@ export const getClassAttendanceDates = async (
   });
 
   // Extract unique dates and format them
-  const dates = attendanceRecords.map((record) => {
+  const dates = attendanceRecords.map((record: { date: Date | string }) => {
     const date = new Date(record.date);
     date.setHours(0, 0, 0, 0);
     return date.toISOString().split('T')[0];

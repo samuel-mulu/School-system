@@ -3,3 +3,12 @@ node_modules
 .env
 
 /src/generated/prisma
+
+# Compiled JavaScript files (should only be in dist/)
+*.js
+*.js.map
+*.d.ts
+*.d.ts.map
+
+# Exclude dist directory from source control (build output)
+dist/

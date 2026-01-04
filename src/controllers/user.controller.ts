@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
-import * as userService from '../services/user.service';
-import { sendSuccess } from '../utils/responses';
+import * as userService from "../services/user.service.js";
+import { sendSuccess } from "../utils/responses.js";
 
 export const getUsers = async (
   req: Request,
@@ -17,7 +17,7 @@ export const getUsers = async (
 };
 
 export const getTeachers = async (
-  req: Request,
+  _req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {

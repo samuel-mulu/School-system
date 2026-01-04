@@ -1,31 +1,31 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import { prisma } from "./config/db";
-import { errorHandler } from "./middleware/errorHandler";
+import { prisma } from "./config/db.js";
+import { errorHandler } from "./middleware/errorHandler.js";
 
 // Routes
-import authRoutes from "./routes/auth";
-import studentRoutes from "./routes/students";
-import classRoutes from "./routes/classes";
-import paymentRoutes from "./routes/payments";
-import attendanceRoutes from "./routes/attendance";
-import marksRoutes from "./routes/marks";
-import reportRoutes from "./routes/reports";
-import termRoutes from "./routes/terms";
-import subExamRoutes from "./routes/subexams";
-import userRoutes from "./routes/users";
-import gradeRoutes from "./routes/grades";
-import academicYearRoutes from "./routes/academicYears";
-import promotionRoutes from "./routes/promotion";
-import settingsRoutes from "./routes/settings";
+import authRoutes from "./routes/auth.js";
+import studentRoutes from "./routes/students.js";
+import classRoutes from "./routes/classes.js";
+import paymentRoutes from "./routes/payments.js";
+import attendanceRoutes from "./routes/attendance.js";
+import marksRoutes from "./routes/marks.js";
+import reportRoutes from "./routes/reports.js";
+import termRoutes from "./routes/terms.js";
+import subExamRoutes from "./routes/subexams.js";
+import userRoutes from "./routes/users.js";
+import gradeRoutes from "./routes/grades.js";
+import academicYearRoutes from "./routes/academicYears.js";
+import promotionRoutes from "./routes/promotion.js";
+import settingsRoutes from "./routes/settings.js";
 
 const app = express();
 
 // Middleware
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: true, // Allow all origins
     credentials: true,
   })
 );
@@ -33,7 +33,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Health check
-app.get("/health", async (req, res) => {
+app.get("/health", async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ status: "ok", database: "connected" });

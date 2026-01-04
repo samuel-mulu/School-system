@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import * as subExamController from '../controllers/subexam.controller.js';
-import { validate } from '../middleware/validation.js';
-import { authenticate } from '../middleware/auth.js';
-import { requireRegistrarOrOwner } from '../middleware/role.js';
+import * as subExamController from "../controllers/subexam.controller.js";
+import { validate } from "../middleware/validation.js";
+import { authenticate } from "../middleware/auth.js";
+import { requireRegistrarOrOwner } from "../middleware/role.js";
 
 const router = Router();
 

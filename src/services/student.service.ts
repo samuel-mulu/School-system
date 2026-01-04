@@ -1,12 +1,12 @@
-import { prisma } from '../config/db';
-import { ClassStatus, PaymentStatus } from '../generated/prisma/enums';
-import { NotFoundError, ConflictError, BadRequestError } from '../utils/errors';
+import { prisma } from "../config/db.js";
+import { ClassStatus, PaymentStatus } from "../generated/prisma/enums.js";
+import { NotFoundError, ConflictError, BadRequestError } from "../utils/errors.js";
 
 interface CreateStudentData {
   // Personal details
   firstName: string;
   lastName: string;
-  dateOfBirth: Date;
+  dateOfBirth: Date | string;
   gender: string;
   nationality?: string;
   religion?: string;
@@ -155,7 +155,7 @@ export const getStudents = async (filters?: {
       where: { headTeacherId: filters.userId },
       select: { id: true },
     });
-    const classIds = teacherClasses.map((c) => c.id);
+    const classIds = teacherClasses.map((c: { id: string }) => c.id);
     
     if (classIds.length === 0) {
       // Teacher has no assigned classes, return empty result
@@ -299,7 +299,7 @@ export const getStudentById = async (
 
   // If user is a TEACHER, check if student is in one of their assigned classes
   if (userRole === 'TEACHER' && userId) {
-    const activeClass = student.classHistory.find((ch) => !ch.endDate);
+    const activeClass = student.classHistory.find((ch: { endDate: Date | null }) => !ch.endDate);
     if (!activeClass) {
       throw new NotFoundError('Student not found');
     }
@@ -401,7 +401,7 @@ export const assignStudentToClass = async (
   }
 
   // Create new class assignment
-  const studentClass = await prisma.studentClass.create({
+  await prisma.studentClass.create({
     data: {
       studentId,
       classId,

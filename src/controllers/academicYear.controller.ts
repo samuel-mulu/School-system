@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
-import * as academicYearService from '../services/academicYear.service';
-import { sendSuccess } from '../utils/responses';
+import * as academicYearService from "../services/academicYear.service.js";
+import { sendSuccess } from "../utils/responses.js";
 
 export const createAcademicYear = async (
   req: Request,
@@ -20,7 +20,7 @@ export const createAcademicYear = async (
 };
 
 export const getAcademicYears = async (
-  req: Request,
+  _req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
@@ -46,7 +46,7 @@ export const getAcademicYearById = async (
 };
 
 export const getActiveAcademicYear = async (
-  req: Request,
+  _req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {

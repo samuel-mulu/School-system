@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
-import * as classService from '../services/class.service';
-import { sendSuccess } from '../utils/responses';
+import * as classService from "../services/class.service.js";
+import { sendSuccess } from "../utils/responses.js";
 
 export const createClass = async (
   req: Request,

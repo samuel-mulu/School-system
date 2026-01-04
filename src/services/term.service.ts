@@ -1,5 +1,5 @@
-import { prisma } from '../config/db';
-import { NotFoundError, ConflictError, BadRequestError } from '../utils/errors';
+import { prisma } from "../config/db.js";
+import { NotFoundError, ConflictError, BadRequestError } from "../utils/errors.js";
 
 export const createTerm = async (data: {
   name: string;

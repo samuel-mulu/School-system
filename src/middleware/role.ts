@@ -1,9 +1,9 @@
 import type { Request, Response, NextFunction } from 'express';
-import { UserRole } from '../generated/prisma/enums';
-import { ForbiddenError } from '../utils/errors';
+import { UserRole } from "../generated/prisma/enums.js";
+import { ForbiddenError } from "../utils/errors.js";
 
 export const requireRole = (...allowedRoles: UserRole[]) => {
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) {
       throw new ForbiddenError('Authentication required');
     }

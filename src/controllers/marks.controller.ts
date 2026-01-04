@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
-import * as marksService from '../services/marks.service';
-import { sendSuccess } from '../utils/responses';
+import * as marksService from "../services/marks.service.js";
+import { sendSuccess } from "../utils/responses.js";
 
 export const createMark = async (
   req: Request,
@@ -192,7 +192,7 @@ export const generateRoster = async (
     const { classId } = req.params;
     const termId = req.query.termId as string | undefined;
     const { generateRoster: generateRosterService } = await import(
-      '../services/calculation.service'
+      '../services/calculation.service.js'
     );
     const result = await generateRosterService(classId, termId);
     sendSuccess(res, result);

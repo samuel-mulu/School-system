@@ -1,7 +1,6 @@
 import bcrypt from 'bcrypt';
-import { prisma } from '../config/db';
-import { ConflictError, NotFoundError, BadRequestError } from '../utils/errors';
-import * as authService from './auth.service';
+import { prisma } from "../config/db.js";
+import { ConflictError, NotFoundError, BadRequestError } from "../utils/errors.js";
 
 export const getUsers = async (role?: string) => {
   const where: any = {};

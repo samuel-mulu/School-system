@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import * as promotionController from '../controllers/promotion.controller';
-import { authenticate } from '../middleware/auth';
-import { requireRegistrarOrOwner } from '../middleware/role';
+import * as promotionController from "../controllers/promotion.controller.js";
+import { authenticate } from "../middleware/auth.js";
+import { requireRegistrarOrOwner } from "../middleware/role.js";
 
 const router = Router();
 

@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
-import * as termService from '../services/term.service';
-import { sendSuccess } from '../utils/responses';
+import * as termService from "../services/term.service.js";
+import { sendSuccess } from "../utils/responses.js";
 
 export const createTerm = async (
   req: Request,

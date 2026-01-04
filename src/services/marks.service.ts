@@ -1,6 +1,6 @@
-import { prisma } from '../config/db';
-import { NotFoundError, ConflictError, BadRequestError } from '../utils/errors';
-import { assignGrade, calculateTermTotal, calculateYearAverage } from './calculation.service';
+import { prisma } from "../config/db.js";
+import { NotFoundError, ConflictError, BadRequestError } from "../utils/errors.js";
+import { assignGrade, calculateTermTotal, calculateYearAverage } from "./calculation.service.js";
 
 interface CreateMarkData {
   studentId: string;

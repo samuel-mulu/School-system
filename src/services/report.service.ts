@@ -1,5 +1,5 @@
-import { prisma } from '../config/db';
-import { NotFoundError } from '../utils/errors';
+import { prisma } from "../config/db.js";
+import { NotFoundError } from "../utils/errors.js";
 
 export const getStudentReport = async (studentId: string) => {
   const student = await prisma.student.findUnique({
@@ -54,44 +54,46 @@ export const getStudentReport = async (studentId: string) => {
   // Calculate attendance summary
   const attendanceSummary = {
     total: student.attendance.length,
-    present: student.attendance.filter((a) => a.status === 'present').length,
-    absent: student.attendance.filter((a) => a.status === 'absent').length,
-    late: student.attendance.filter((a) => a.status === 'late').length,
+    present: student.attendance.filter((a: { status: string }) => a.status === 'present').length,
+    absent: student.attendance.filter((a: { status: string }) => a.status === 'absent').length,
+    late: student.attendance.filter((a: { status: string }) => a.status === 'late').length,
     attendanceRate:
       student.attendance.length > 0
-        ? (student.attendance.filter((a) => a.status === 'present').length /
+        ? (student.attendance.filter((a: { status: string }) => a.status === 'present').length /
             student.attendance.length) *
           100
         : 0,
   };
 
   // Group marks by term
-  const marksByTerm = student.marks.reduce((acc, mark) => {
-    if (!acc[mark.term]) {
-      acc[mark.term] = [];
+  const marksByTerm = student.marks.reduce((acc: Record<string, unknown[]>, mark: any) => {
+    const term = mark.term?.id || mark.term || 'unknown';
+    if (!acc[term]) {
+      acc[term] = [];
     }
-    acc[mark.term].push(mark);
+    acc[term].push(mark);
     return acc;
-  }, {} as Record<string, typeof student.marks>);
+  }, {} as Record<string, unknown[]>);
 
   // Calculate average per term
   const termAverages = Object.entries(marksByTerm).map(([term, marks]) => {
+    const typedMarks = (marks as any[]).filter((m: any) => m.score !== undefined && m.maxScore !== undefined) as Array<{ score: number; maxScore: number }>;
     const average =
-      marks.length > 0
-        ? marks.reduce((sum, m) => sum + (m.score / m.maxScore) * 100, 0) / marks.length
+      typedMarks.length > 0
+        ? typedMarks.reduce((sum: number, m: { score: number; maxScore: number }) => sum + (m.score / m.maxScore) * 100, 0) / typedMarks.length
         : 0;
-    return { term, average, subjectCount: marks.length };
+    return { term, average, subjectCount: typedMarks.length };
   });
 
   // Payment summary
   const paymentSummary = {
     total: student.payments.length,
-    confirmed: student.payments.filter((p) => p.status === 'confirmed').length,
-    pending: student.payments.filter((p) => p.status === 'pending').length,
-    totalAmount: student.payments.reduce((sum, p) => sum + p.amount, 0),
+    confirmed: student.payments.filter((p: { status: string }) => p.status === 'confirmed').length,
+    pending: student.payments.filter((p: { status: string }) => p.status === 'pending').length,
+    totalAmount: student.payments.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0),
     paidAmount: student.payments
-      .filter((p) => p.status === 'confirmed')
-      .reduce((sum, p) => sum + p.amount, 0),
+      .filter((p: { status: string }) => p.status === 'confirmed')
+      .reduce((sum: number, p: { amount: number }) => sum + p.amount, 0),
   };
 
   return {
@@ -134,15 +136,15 @@ export const getPaymentHistory = async (studentId: string) => {
 
   const summary = {
     total: payments.length,
-    confirmed: payments.filter((p) => p.status === 'confirmed').length,
-    pending: payments.filter((p) => p.status === 'pending').length,
-    totalAmount: payments.reduce((sum, p) => sum + p.amount, 0),
+    confirmed: payments.filter((p: { status: string }) => p.status === 'confirmed').length,
+    pending: payments.filter((p: { status: string }) => p.status === 'pending').length,
+    totalAmount: payments.reduce((sum: number, p: { amount: number }) => sum + p.amount, 0),
     paidAmount: payments
-      .filter((p) => p.status === 'confirmed')
-      .reduce((sum, p) => sum + p.amount, 0),
+      .filter((p: { status: string }) => p.status === 'confirmed')
+      .reduce((sum: number, p: { amount: number }) => sum + p.amount, 0),
     outstandingAmount: payments
-      .filter((p) => p.status === 'pending')
-      .reduce((sum, p) => sum + p.amount, 0),
+      .filter((p: { status: string }) => p.status === 'pending')
+      .reduce((sum: number, p: { amount: number }) => sum + p.amount, 0),
   };
 
   return {
@@ -176,7 +178,7 @@ export const getClassReport = async (classId: string, term?: string) => {
   }
 
   // Get attendance for all students in class
-  const studentIds = classRecord.studentClasses.map((sc) => sc.studentId);
+  const studentIds = classRecord.studentClasses.map((sc: { studentId: string }) => sc.studentId);
 
   const attendance = await prisma.attendance.findMany({
     where: {
@@ -224,17 +226,17 @@ export const getClassReport = async (classId: string, term?: string) => {
   });
 
   // Calculate attendance per student
-  const attendanceByStudent = studentIds.map((studentId) => {
-    const studentAttendance = attendance.filter((a) => a.studentId === studentId);
+  const attendanceByStudent = studentIds.map((studentId: string) => {
+    const studentAttendance = attendance.filter((a: { studentId: string }) => a.studentId === studentId);
     return {
       studentId,
       total: studentAttendance.length,
-      present: studentAttendance.filter((a) => a.status === 'present').length,
-      absent: studentAttendance.filter((a) => a.status === 'absent').length,
-      late: studentAttendance.filter((a) => a.status === 'late').length,
+      present: studentAttendance.filter((a: { status: string }) => a.status === 'present').length,
+      absent: studentAttendance.filter((a: { status: string }) => a.status === 'absent').length,
+      late: studentAttendance.filter((a: { status: string }) => a.status === 'late').length,
       attendanceRate:
         studentAttendance.length > 0
-          ? (studentAttendance.filter((a) => a.status === 'present').length /
+          ? (studentAttendance.filter((a: { status: string }) => a.status === 'present').length /
               studentAttendance.length) *
             100
           : 0,
@@ -242,11 +244,11 @@ export const getClassReport = async (classId: string, term?: string) => {
   });
 
   // Calculate marks per student
-  const marksByStudent = studentIds.map((studentId) => {
-    const studentMarks = marks.filter((m) => m.studentId === studentId);
+  const marksByStudent = studentIds.map((studentId: string) => {
+    const studentMarks = marks.filter((m: { studentId: string }) => m.studentId === studentId);
     const average =
       studentMarks.length > 0
-        ? studentMarks.reduce((sum, m) => sum + (m.score / m.maxScore) * 100, 0) /
+        ? studentMarks.reduce((sum: number, m: { score: number; maxScore: number }) => sum + (m.score / m.maxScore) * 100, 0) /
           studentMarks.length
         : 0;
     return {
@@ -268,7 +270,7 @@ export const getClassReport = async (classId: string, term?: string) => {
       totalRecords: attendance.length,
       averageAttendanceRate:
         attendanceByStudent.length > 0
-          ? attendanceByStudent.reduce((sum, a) => sum + a.attendanceRate, 0) /
+          ? attendanceByStudent.reduce((sum: number, a: { attendanceRate: number }) => sum + a.attendanceRate, 0) /
             attendanceByStudent.length
           : 0,
     },
@@ -276,7 +278,7 @@ export const getClassReport = async (classId: string, term?: string) => {
       totalMarks: marks.length,
       averageScore:
         marksByStudent.length > 0
-          ? marksByStudent.reduce((sum, m) => sum + m.average, 0) / marksByStudent.length
+          ? marksByStudent.reduce((sum: number, m: { average: number }) => sum + m.average, 0) / marksByStudent.length
           : 0,
     },
     attendanceByStudent,

@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
-import * as gradeService from '../services/grade.service';
-import { sendSuccess } from '../utils/responses';
+import * as gradeService from "../services/grade.service.js";
+import { sendSuccess } from "../utils/responses.js";
 
 export const createGrade = async (
   req: Request,
@@ -16,7 +16,7 @@ export const createGrade = async (
 };
 
 export const getGrades = async (
-  req: Request,
+  _req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {

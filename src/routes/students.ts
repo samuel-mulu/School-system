@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import * as studentController from '../controllers/student.controller.js';
-import { validate } from '../middleware/validation.js';
-import { authenticate } from '../middleware/auth.js';
-import { requireRegistrarOrOwner } from '../middleware/role.js';
+import * as studentController from "../controllers/student.controller.js";
+import { validate } from "../middleware/validation.js";
+import { authenticate } from "../middleware/auth.js";
+import { requireRegistrarOrOwner } from "../middleware/role.js";
 
 const router = Router();
 
@@ -96,7 +96,7 @@ router.post(
   studentController.assignStudentToClass
 );
 
-import { requireRole } from '../middleware/role.js';
+import { requireRole } from "../middleware/role.js";
 
 router.post(
   '/:id/transfer',
