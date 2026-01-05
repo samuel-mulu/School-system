@@ -13,7 +13,7 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "lint": "eslint . --ext .ts",
     "test": "jest",
-    "prepare": "husky install"
+    "postinstall": "husky install || true"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
