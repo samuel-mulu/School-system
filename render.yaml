@@ -28,7 +28,7 @@ services:
         value: 7d
 
       - key: FRONTEND_URL
-        value: https://your-frontend-domain.vercel.app
+        value: https://students-nine-tau.vercel.app
 
       - key: DATABASE_URL
         fromDatabase:
