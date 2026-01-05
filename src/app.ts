@@ -22,27 +22,48 @@ import userRoutes from "./routes/users.js";
 
 const app = express();
 
-// Middleware
+/**
+ * =========================
+ * CORS (FIXED & SIMPLE)
+ * =========================
+ */
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Explicit origin for cookies
+    origin: [
+      "http://localhost:3000",
+      "https://students-nine-tau.vercel.app",
+    ],
     credentials: true,
   })
 );
+
+/**
+ * =========================
+ * GLOBAL MIDDLEWARE
+ * =========================
+ */
 app.use(express.json());
 app.use(cookieParser());
 
-// Health check
+/**
+ * =========================
+ * HEALTH CHECK
+ * =========================
+ */
 app.get("/health", async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ status: "ok", database: "connected" });
-  } catch (error) {
+  } catch {
     res.status(503).json({ status: "error", database: "disconnected" });
   }
 });
 
-// API Routes
+/**
+ * =========================
+ * API ROUTES
+ * =========================
+ */
 app.use("/api/auth", authRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/classes", classRoutes);
@@ -58,7 +79,11 @@ app.use("/api/academic-years", academicYearRoutes);
 app.use("/api/promotion", promotionRoutes);
 app.use("/api/settings", settingsRoutes);
 
-// Error handling middleware (must be last)
+/**
+ * =========================
+ * ERROR HANDLER (LAST)
+ * =========================
+ */
 app.use(errorHandler);
 
 export default app;
