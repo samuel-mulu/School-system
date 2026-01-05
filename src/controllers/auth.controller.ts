@@ -23,11 +23,11 @@ export const login = async (
 ): Promise<void> => {
   try {
     const { user, token } = await authService.login(req.body);
-    
-    // Set token in HTTP-only cookie
+
+    // ✅ Correct cookie for production & local
     res.cookie('token', token, getCookieOptions());
-    
-    sendSuccess(res, { user, token }, 'Login successful');
+
+    sendSuccess(res, { user }, 'Login successful');
   } catch (error) {
     next(error);
   }
@@ -39,7 +39,9 @@ export const logout = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    res.clearCookie('token', { path: '/' });
+    // ✅ MUST match cookie options exactly
+    res.clearCookie('token', getCookieOptions());
+
     sendSuccess(res, null, 'Logout successful');
   } catch (error) {
     next(error);
@@ -55,10 +57,10 @@ export const getMe = async (
     if (!req.user) {
       throw new Error('User not authenticated');
     }
+
     const user = await authService.getCurrentUser(req.user.userId);
     sendSuccess(res, user);
   } catch (error) {
     next(error);
   }
 };
-
