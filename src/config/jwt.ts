@@ -26,13 +26,12 @@ export const verifyToken = (token: string): JWTPayload => {
 
 export const getCookieOptions = () => {
   const isProduction = process.env.NODE_ENV === 'production';
-  
+
   return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: 'strict' as const,
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    secure: isProduction,         // Secure cookie only in production (requires HTTPS)
+    sameSite: isProduction ? 'none' : 'lax',  // 'none' for cross-site in production, else 'lax' for dev
+    maxAge: 7 * 24 * 60 * 60 * 1000,  // 7 days in milliseconds
     path: '/',
   };
 };
-
