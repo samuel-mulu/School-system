@@ -29,9 +29,10 @@ export const getCookieOptions = () => {
 
   return {
     httpOnly: true,
-    secure: isProduction,         // Secure cookie only in production (requires HTTPS)
-    sameSite: isProduction ? 'none' : 'lax',  // 'none' for cross-site in production, else 'lax' for dev
-    maxAge: 7 * 24 * 60 * 60 * 1000,  // 7 days in milliseconds
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
     path: '/',
   };
 };
+
