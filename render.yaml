@@ -1,27 +1,35 @@
-# render.yaml
 services:
   - type: web
     name: school-system
     env: node
-    buildCommand: npm install && npm run build && npx prisma migrate deploy
+    region: oregon
+    plan: free
+    autoDeploy: true
+
+    buildCommand: |
+      npm install
+      npx prisma generate
+      npm run build
+      npx prisma migrate deploy
+
     startCommand: node dist/server.js
+
     envVars:
       - key: NODE_ENV
         value: production
+
       - key: PORT
         value: 10000
+
       - key: JWT_SECRET
         generateValue: true
+
       - key: DATABASE_URL
         fromDatabase:
           name: school-db
           property: connectionString
-    plan: free
-    autoDeploy: true
-    region: oregon  # or your preferred region
 
-  # PostgreSQL Database (optional - create manually in Render dashboard if preferred)
-  - type: pspg
+  - type: postgres
     name: school-db
     plan: free
     databaseName: school_db
