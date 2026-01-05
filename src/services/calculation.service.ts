@@ -146,8 +146,8 @@ export const calculateYearAverage = async (
   };
 }> => {
   // Get Term 1 and Term 2
-  const term1 = await prisma.term.findUnique({ where: { name: 'Term 1' } });
-  const term2 = await prisma.term.findUnique({ where: { name: 'Term 2' } });
+  const term1 = await prisma.term.findFirst({ where: { name: 'Term 1', academicYear: { status: 'ACTIVE' } } });
+  const term2 = await prisma.term.findFirst({ where: { name: 'Term 2', academicYear: { status: 'ACTIVE' } } });
 
   if (!term1 || !term2) {
     throw new NotFoundError('Term 1 or Term 2 not found');

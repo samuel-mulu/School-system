@@ -1,6 +1,6 @@
+import { AttendanceStatus } from "@prisma/client";
 import { prisma } from "../config/db.js";
-import { AttendanceStatus } from "../generated/prisma/enums.js";
-import { NotFoundError, BadRequestError } from "../utils/errors.js";
+import { BadRequestError, NotFoundError } from "../utils/errors.js";
 
 interface CreateAttendanceData {
   studentId: string;

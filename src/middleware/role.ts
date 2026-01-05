@@ -1,5 +1,5 @@
-import type { Request, Response, NextFunction } from 'express';
-import { UserRole } from "../generated/prisma/enums.js";
+import { UserRole } from "@prisma/client";
+import type { NextFunction, Request, Response } from 'express';
 import { ForbiddenError } from "../utils/errors.js";
 
 export const requireRole = (...allowedRoles: UserRole[]) => {

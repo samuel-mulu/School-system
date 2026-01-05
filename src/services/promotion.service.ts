@@ -1,8 +1,8 @@
 import { prisma } from "../config/db.js";
-import { NotFoundError, BadRequestError } from "../utils/errors.js";
+import { BadRequestError, NotFoundError } from "../utils/errors.js";
+import { createAcademicYear, getActiveAcademicYear } from "./academicYear.service.js";
 import { calculateYearAverage } from "./calculation.service.js";
-import { getNextGrade, getHighestGrade } from "./grade.service.js";
-import { getActiveAcademicYear, createAcademicYear } from "./academicYear.service.js";
+import { getHighestGrade, getNextGrade } from "./grade.service.js";
 import { getSetting } from "./settings.service.js";
 // Note: After running 'npx prisma generate', you can import Prisma enums from '../generated/prisma/client'
 
@@ -79,8 +79,8 @@ export const calculateStudentYearlyAverage = async (
  */
 export const getPromotionPreview = async (): Promise<PromotionPreview> => {
   // Check if Term 2 exists and is closed
-  const term2 = await prisma.term.findUnique({
-    where: { name: 'Term 2' },
+  const term2 = await prisma.term.findFirst({
+    where: { name: 'Term 2', academicYear: { status: 'ACTIVE' } },
   });
 
   if (!term2) {

@@ -18,7 +18,11 @@
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
-  "keywords": ["school", "management", "api"],
+  "keywords": [
+    "school",
+    "management",
+    "api"
+  ],
   "author": "",
   "license": "ISC",
   "type": "module",
@@ -64,6 +68,7 @@
     "lint-staged": "^15.2.2",
     "nodemon": "^3.1.11",
     "prettier": "^3.2.5",
+    "prisma": "^6.19.1",
     "supertest": "^6.3.3",
     "ts-jest": "^29.1.2",
     "ts-node": "^10.9.2",
