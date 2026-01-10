@@ -4,11 +4,12 @@ import { BadRequestError, ConflictError, NotFoundError } from "../utils/errors.j
 
 interface CreatePaymentData {
   studentId: string;
-  amount: number;
+  paymentTypeId: string; // Required: payment type ID instead of amount
   month: string; // Format: "2024-01"
   year: number;
   paymentMethod?: string;
   notes?: string;
+  amount?: number; // Optional for backward compatibility, but will be fetched from PaymentType
 }
 
 export const createPayment = async (data: CreatePaymentData) => {
@@ -19,6 +20,26 @@ export const createPayment = async (data: CreatePaymentData) => {
 
   if (!student) {
     throw new NotFoundError('Student not found');
+  }
+
+  // Fetch payment type to get amount
+  const paymentType = await prisma.paymentType.findUnique({
+    where: { id: data.paymentTypeId },
+  });
+
+  if (!paymentType) {
+    throw new NotFoundError('Payment type not found');
+  }
+
+  if (!paymentType.isActive) {
+    throw new BadRequestError('Payment type is not active');
+  }
+
+  // Use amount from payment type, or fallback to provided amount (backward compatibility)
+  const amount = paymentType.amount || data.amount || 0;
+
+  if (amount <= 0) {
+    throw new BadRequestError('Payment amount must be greater than 0');
   }
 
   // Check if payment for this month/year already exists
@@ -44,7 +65,13 @@ export const createPayment = async (data: CreatePaymentData) => {
 
   const payment = await prisma.payment.create({
     data: {
-      ...data,
+      studentId: data.studentId,
+      paymentTypeId: data.paymentTypeId,
+      amount: amount,
+      month: data.month,
+      year: data.year,
+      paymentMethod: data.paymentMethod,
+      notes: data.notes,
       status: PaymentStatus.pending,
     },
     include: {
@@ -53,8 +80,10 @@ export const createPayment = async (data: CreatePaymentData) => {
           id: true,
           firstName: true,
           lastName: true,
+          parentName: true,
         },
       },
+      paymentType: true,
     },
   });
 
@@ -100,8 +129,10 @@ export const getPayments = async (filters?: {
             id: true,
             firstName: true,
             lastName: true,
+            parentName: true,
           },
         },
+        paymentType: true,
         receipt: true,
       },
       skip,
@@ -128,7 +159,15 @@ export const getPaymentById = async (id: string) => {
   const payment = await prisma.payment.findUnique({
     where: { id },
     include: {
-      student: true,
+      student: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          parentName: true,
+        },
+      },
+      paymentType: true,
       receipt: true,
     },
   });
@@ -148,7 +187,16 @@ export const confirmPayment = async (
   const payment = await prisma.payment.findUnique({
     where: { id },
     include: {
+      student: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          parentName: true,
+        },
+      },
       receipt: true,
+      paymentType: true,
     },
   });
 
@@ -167,6 +215,17 @@ export const confirmPayment = async (
       status: PaymentStatus.confirmed,
       paymentDate: paymentDate || new Date(),
       paymentMethod: paymentMethod || payment.paymentMethod,
+    },
+    include: {
+      student: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          parentName: true,
+        },
+      },
+      paymentType: true,
     },
   });
 
@@ -228,7 +287,15 @@ export const getReceiptById = async (id: string) => {
     include: {
       payment: {
         include: {
-          student: true,
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              parentName: true,
+            },
+          },
+          paymentType: true,
         },
       },
     },
@@ -247,7 +314,15 @@ export const getReceiptByNumber = async (receiptNumber: string) => {
     include: {
       payment: {
         include: {
-          student: true,
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              parentName: true,
+            },
+          },
+          paymentType: true,
         },
       },
     },

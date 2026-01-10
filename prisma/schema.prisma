@@ -360,11 +360,29 @@ model Mark {
   @@index([studentId, subjectId, termId])
 }
 
+// PaymentType model - predefined payment types with fixed amounts
+model PaymentType {
+  id          String   @id @default(uuid())
+  name        String   @unique // e.g., "Tuition Fee", "Registration Fee"
+  amount      Float    // Fixed amount for this payment type
+  description String?  // Optional description
+  isActive    Boolean  @default(true) // Allow soft delete
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  payments    Payment[]
+
+  @@index([name])
+  @@index([isActive])
+}
+
 // Payment model - monthly payment records
 model Payment {
   id            String         @id @default(uuid())
   studentId     String
   amount        Float
+  paymentTypeId String?        // Optional to support existing payments
   month         String         // e.g., "2024-01" for January 2024
   year          Int
   status        PaymentStatus  @default(pending)
@@ -375,13 +393,15 @@ model Payment {
   updatedAt     DateTime       @updatedAt
 
   // Relations
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  receipt Receipt?
+  student     Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  paymentType PaymentType? @relation(fields: [paymentTypeId], references: [id])
+  receipt     Receipt?
 
   @@unique([studentId, month, year])
   @@index([studentId])
   @@index([status])
   @@index([month, year])
+  @@index([paymentTypeId])
 }
 
 // Receipt model - linked to confirmed payments

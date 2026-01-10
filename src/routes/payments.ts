@@ -11,11 +11,12 @@ const router = Router();
 const createPaymentSchema = z.object({
   body: z.object({
     studentId: z.string().uuid(),
-    amount: z.number().positive(),
+    paymentTypeId: z.string().uuid('Payment type ID is required'),
     month: z.string().regex(/^\d{4}-\d{2}$/, 'Month must be in YYYY-MM format'),
     year: z.number().int().min(2000).max(3000),
     paymentMethod: z.string().optional(),
     notes: z.string().optional(),
+    amount: z.number().positive().optional(), // Optional for backward compatibility, but will be fetched from PaymentType
   }),
 });
 
