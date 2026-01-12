@@ -22,7 +22,7 @@ export const authenticate = (
     const token = req.cookies?.token || req.headers.authorization?.replace('Bearer ', '');
 
     if (!token) {
-      throw new UnauthorizedError('Authentication required');
+      return next(new UnauthorizedError('Authentication required'));
     }
 
     const payload = verifyToken(token);
@@ -30,9 +30,9 @@ export const authenticate = (
     next();
   } catch (error: any) {
     if (error instanceof UnauthorizedError) {
-      throw error;
+      return next(error);
     }
-    throw new UnauthorizedError('Invalid or expired token');
+    return next(new UnauthorizedError('Invalid or expired token'));
   }
 };
 

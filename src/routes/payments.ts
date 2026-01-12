@@ -20,6 +20,16 @@ const createPaymentSchema = z.object({
   }),
 });
 
+const createBulkPaymentSchema = z.object({
+  body: z.object({
+    studentId: z.string().uuid(),
+    paymentTypeId: z.string().uuid('Payment type ID is required'),
+    months: z.array(z.string().regex(/^\d{4}-\d{2}$/, 'Month must be in YYYY-MM format')).min(1, 'At least one month must be provided'),
+    paymentMethod: z.string().optional(),
+    notes: z.string().optional(),
+  }),
+});
+
 const confirmPaymentSchema = z.object({
   body: z.object({
     paymentDate: z.coerce.date().optional(),
@@ -27,7 +37,23 @@ const confirmPaymentSchema = z.object({
   }),
 });
 
+const confirmBulkPaymentsSchema = z.object({
+  body: z.object({
+    paymentIds: z.array(z.string().uuid()).min(1, 'At least one payment ID is required'),
+    paymentDate: z.coerce.date().optional(),
+    paymentMethod: z.string().optional(),
+  }),
+});
+
 // Routes
+router.post(
+  '/bulk',
+  authenticate,
+  requireRegistrarOrOwner,
+  validate(createBulkPaymentSchema),
+  paymentController.createBulkPayments
+);
+
 router.post(
   '/',
   authenticate,
@@ -48,6 +74,14 @@ router.get(
   authenticate,
   requireRegistrarOrOwner,
   paymentController.getPaymentById
+);
+
+router.post(
+  '/bulk/confirm',
+  authenticate,
+  requireRegistrarOrOwner,
+  validate(confirmBulkPaymentsSchema),
+  paymentController.confirmBulkPayments
 );
 
 router.post(

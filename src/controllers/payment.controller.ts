@@ -15,6 +15,19 @@ export const createPayment = async (
   }
 };
 
+export const createBulkPayments = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const payments = await paymentService.createBulkPayments(req.body);
+    sendSuccess(res, { payments }, `Successfully created ${payments.length} payment${payments.length !== 1 ? 's' : ''}`, 201);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getPayments = async (
   req: Request,
   res: Response,
@@ -67,6 +80,27 @@ export const confirmPayment = async (
   }
 };
 
+export const confirmBulkPayments = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { paymentIds, paymentDate, paymentMethod } = req.body;
+    if (!Array.isArray(paymentIds) || paymentIds.length === 0) {
+      return next(new Error('paymentIds array is required'));
+    }
+    const result = await paymentService.confirmBulkPayments(
+      paymentIds,
+      paymentDate ? new Date(paymentDate) : undefined,
+      paymentMethod
+    );
+    sendSuccess(res, result, `Successfully confirmed ${result.payments.length} payment${result.payments.length !== 1 ? 's' : ''} with receipt ${result.receipt.receiptNumber}`);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const generateReceipt = async (
   req: Request,
   res: Response,
@@ -86,8 +120,10 @@ export const getReceiptById = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const receipt = await paymentService.getReceiptById(req.params.id);
-    sendSuccess(res, receipt);
+    const receiptData = await paymentService.getReceiptById(req.params.id);
+    // Extract receipt and payments for frontend compatibility
+    const { payments, ...receipt } = receiptData;
+    sendSuccess(res, { receipt, payments });
   } catch (error) {
     next(error);
   }
@@ -99,8 +135,10 @@ export const getReceiptByNumber = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const receipt = await paymentService.getReceiptByNumber(req.params.receiptNumber);
-    sendSuccess(res, receipt);
+    const receiptData = await paymentService.getReceiptByNumber(req.params.receiptNumber);
+    // Extract receipt and payments for frontend compatibility
+    const { payments, ...receipt } = receiptData;
+    sendSuccess(res, { receipt, payments });
   } catch (error) {
     next(error);
   }

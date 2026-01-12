@@ -17,11 +17,11 @@ export const validate = (schema: z.ZodTypeAny) => {
           path: err.path.join('.'),
           message: err.message,
         }));
-        throw new ValidationError(
+        return next(new ValidationError(
           `Validation failed: ${errors.map((e: { message: string }) => e.message).join(', ')}`
-        );
+        ));
       }
-      throw error;
+      return next(error);
     }
   };
 };

@@ -13,9 +13,11 @@ export const errorHandler = (
   }
 
   // Handle Prisma validation errors
-  if (err.name === 'PrismaClientValidationError' || err.message.includes('Invalid value')) {
+  if (err.name === 'PrismaClientValidationError' || err.message.includes('Invalid value') || err.message.includes('Argument') || err.message.includes('missing')) {
     const errorMessage = err.message.includes('dateOfBirth') 
       ? 'Invalid date format. Please provide a valid date.'
+      : err.message.includes('missing') && err.message.includes('Prisma')
+      ? 'Database schema mismatch. Please regenerate Prisma client by running: npx prisma generate'
       : err.message.split('\n').pop() || 'Validation error';
     return sendError(res, errorMessage, 400);
   }

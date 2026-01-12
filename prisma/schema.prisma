@@ -389,33 +389,33 @@ model Payment {
   paymentDate   DateTime?
   paymentMethod String?        // e.g., "cash", "bank_transfer", "card"
   notes         String?
+  receiptId     String?        // Foreign key to Receipt (allows multiple payments per receipt)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
   // Relations
   student     Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
   paymentType PaymentType? @relation(fields: [paymentTypeId], references: [id])
-  receipt     Receipt?
+  receipt     Receipt?     @relation(fields: [receiptId], references: [id], onDelete: SetNull)
 
   @@unique([studentId, month, year])
   @@index([studentId])
   @@index([status])
   @@index([month, year])
   @@index([paymentTypeId])
+  @@index([receiptId])
 }
 
-// Receipt model - linked to confirmed payments
+// Receipt model - linked to confirmed payments (one-to-many: one receipt can have multiple payments)
 model Receipt {
   id          String   @id @default(uuid())
-  paymentId   String   @unique
   receiptNumber String @unique
   issuedDate  DateTime @default(now())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   // Relations
-  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  payments Payment[] // One receipt can have multiple payments
 
   @@index([receiptNumber])
-  @@index([paymentId])
 }
