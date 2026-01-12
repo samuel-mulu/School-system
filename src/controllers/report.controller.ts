@@ -42,3 +42,22 @@ export const getClassReport = async (
   }
 };
 
+export const getPaymentReports = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { academicYearId, paymentTypeId, month, registrarId } = req.query;
+    const report = await reportService.getPaymentReports({
+      academicYearId: academicYearId as string | undefined,
+      paymentTypeId: paymentTypeId as string | undefined,
+      month: month as string | undefined,
+      registrarId: registrarId as string | undefined,
+    });
+    sendSuccess(res, report);
+  } catch (error) {
+    next(error);
+  }
+};
+

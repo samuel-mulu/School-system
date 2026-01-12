@@ -286,3 +286,237 @@ export const getClassReport = async (classId: string, term?: string) => {
   };
 };
 
+export const getPaymentReports = async (params: {
+  academicYearId?: string;
+  paymentTypeId?: string;
+  month?: string; // YYYY-MM format
+  registrarId?: string; // User ID of registrar who processed payment
+}) => {
+  const { academicYearId, paymentTypeId, month, registrarId } = params;
+
+  // Build where clause for payments
+  const whereClause: any = {
+    status: 'confirmed', // Only confirmed payments for revenue
+  };
+
+  // Filter by payment type if provided
+  if (paymentTypeId) {
+    whereClause.paymentTypeId = paymentTypeId;
+  }
+
+  // Filter by month if provided
+  if (month) {
+    whereClause.month = month;
+  }
+
+  // Filter by registrar if provided (will be implemented when we add processedBy field)
+  // For now, we'll skip this filter
+
+  // If academic year is provided, filter by students in classes from that academic year
+  if (academicYearId) {
+    const classesInYear = await prisma.class.findMany({
+      where: { academicYearId },
+      select: { id: true },
+    });
+    const classIds = classesInYear.map(c => c.id);
+    
+    const studentClasses = await prisma.studentClass.findMany({
+      where: {
+        classId: { in: classIds },
+        endDate: null, // Active students only
+      },
+      select: { studentId: true },
+    });
+    const studentIds = [...new Set(studentClasses.map(sc => sc.studentId))];
+    
+    if (studentIds.length > 0) {
+      whereClause.studentId = { in: studentIds };
+    } else {
+      // No students in this academic year, return empty result
+      return {
+        summary: {
+          totalRevenue: 0,
+          monthlyRevenue: 0,
+          paymentCount: 0,
+          confirmedPaymentCount: 0,
+          totalStudents: 0,
+          paidStudents: 0,
+          paymentProgress: 0,
+        },
+        byPaymentType: [],
+        byMonth: [],
+      };
+    }
+  }
+
+  // Get all confirmed payments
+  const confirmedPayments = await prisma.payment.findMany({
+    where: whereClause,
+    include: {
+      paymentType: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+    orderBy: {
+      paymentDate: 'asc',
+    },
+  });
+
+  // Calculate summary
+  const selectedMonth = month || new Date().toISOString().slice(0, 7);
+  const monthlyRevenue = confirmedPayments
+    .filter(p => p.month === selectedMonth)
+    .reduce((sum, p) => sum + p.amount, 0);
+
+  // Calculate student payment progress for the selected month
+  let totalStudents = 0;
+  let paidStudents = 0;
+  
+  if (academicYearId) {
+    // Get all students in the academic year
+    const classesInYear = await prisma.class.findMany({
+      where: { academicYearId },
+      select: { id: true },
+    });
+    const classIds = classesInYear.map(c => c.id);
+    
+    const studentClasses = await prisma.studentClass.findMany({
+      where: {
+        classId: { in: classIds },
+        endDate: null, // Active students only
+      },
+      select: { studentId: true },
+    });
+    const studentIds = [...new Set(studentClasses.map(sc => sc.studentId))];
+    totalStudents = studentIds.length;
+    
+    // Count students who have paid for the selected month
+    if (month) {
+      const year = parseInt(month.split('-')[0]);
+      const paidStudentIds = new Set(
+        confirmedPayments
+          .filter(p => p.month === month && p.year === year)
+          .map(p => p.studentId)
+      );
+      paidStudents = paidStudentIds.size;
+    } else {
+      // If no month filter, count all students with any payment
+      const paidStudentIds = new Set(confirmedPayments.map(p => p.studentId));
+      paidStudents = paidStudentIds.size;
+    }
+  }
+
+  const summary = {
+    totalRevenue: confirmedPayments.reduce((sum, p) => sum + p.amount, 0),
+    monthlyRevenue,
+    paymentCount: confirmedPayments.length,
+    confirmedPaymentCount: confirmedPayments.length,
+    totalStudents,
+    paidStudents,
+    paymentProgress: totalStudents > 0 ? (paidStudents / totalStudents) * 100 : 0,
+  };
+
+  // Group by payment type
+  const byPaymentTypeMap = new Map<string, {
+    paymentTypeId: string;
+    paymentTypeName: string;
+    totalAmount: number;
+    monthlyBreakdown: Map<string, { amount: number; count: number }>;
+  }>();
+
+  confirmedPayments.forEach(payment => {
+    const typeId = payment.paymentTypeId || 'unknown';
+    const typeName = payment.paymentType?.name || 'Unknown';
+    const month = payment.month; // Already in YYYY-MM format
+
+    if (!byPaymentTypeMap.has(typeId)) {
+      byPaymentTypeMap.set(typeId, {
+        paymentTypeId: typeId,
+        paymentTypeName: typeName,
+        totalAmount: 0,
+        monthlyBreakdown: new Map(),
+      });
+    }
+
+    const typeData = byPaymentTypeMap.get(typeId)!;
+    typeData.totalAmount += payment.amount;
+
+    if (!typeData.monthlyBreakdown.has(month)) {
+      typeData.monthlyBreakdown.set(month, { amount: 0, count: 0 });
+    }
+
+    const monthData = typeData.monthlyBreakdown.get(month)!;
+    monthData.amount += payment.amount;
+    monthData.count += 1;
+  });
+
+  const byPaymentType = Array.from(byPaymentTypeMap.values()).map(type => ({
+    paymentTypeId: type.paymentTypeId,
+    paymentTypeName: type.paymentTypeName,
+    totalAmount: type.totalAmount,
+    monthlyBreakdown: Array.from(type.monthlyBreakdown.entries()).map(([month, data]) => ({
+      month,
+      amount: data.amount,
+      count: data.count,
+    })),
+  }));
+
+  // Group by month
+  const byMonthMap = new Map<string, {
+    month: string;
+    totalAmount: number;
+    paymentCount: number;
+    breakdown: Map<string, { paymentTypeId: string; paymentTypeName: string; amount: number }>;
+  }>();
+
+  confirmedPayments.forEach(payment => {
+    const month = payment.month;
+
+    if (!byMonthMap.has(month)) {
+      byMonthMap.set(month, {
+        month,
+        totalAmount: 0,
+        paymentCount: 0,
+        breakdown: new Map(),
+      });
+    }
+
+    const monthData = byMonthMap.get(month)!;
+    monthData.totalAmount += payment.amount;
+    monthData.paymentCount += 1;
+
+    const typeId = payment.paymentTypeId || 'unknown';
+    const typeName = payment.paymentType?.name || 'Unknown';
+    const breakdownKey = `${typeId}-${typeName}`;
+
+    if (!monthData.breakdown.has(breakdownKey)) {
+      monthData.breakdown.set(breakdownKey, {
+        paymentTypeId: typeId,
+        paymentTypeName: typeName,
+        amount: 0,
+      });
+    }
+
+    const breakdownData = monthData.breakdown.get(breakdownKey)!;
+    breakdownData.amount += payment.amount;
+  });
+
+  const byMonth = Array.from(byMonthMap.values())
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .map(month => ({
+      month: month.month,
+      totalAmount: month.totalAmount,
+      paymentCount: month.paymentCount,
+      breakdown: Array.from(month.breakdown.values()),
+    }));
+
+  return {
+    summary,
+    byPaymentType,
+    byMonth,
+  };
+};
+
