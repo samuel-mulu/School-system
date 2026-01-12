@@ -34,5 +34,12 @@ router.get(
   reportController.getPaymentReports
 );
 
+router.get(
+  '/payments/registrar',
+  authenticate,
+  requireRegistrarOrOwner,
+  reportController.getRegistrarPaymentReports
+);
+
 export default router;
 

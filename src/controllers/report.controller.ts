@@ -48,12 +48,42 @@ export const getPaymentReports = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { academicYearId, paymentTypeId, month, registrarId } = req.query;
+    const { academicYearId, paymentTypeId, month, registrarId, paymentMethod } = req.query;
     const report = await reportService.getPaymentReports({
       academicYearId: academicYearId as string | undefined,
       paymentTypeId: paymentTypeId as string | undefined,
       month: month as string | undefined,
       registrarId: registrarId as string | undefined,
+      paymentMethod: paymentMethod as string | undefined,
+    });
+    sendSuccess(res, report);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getRegistrarPaymentReports = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { academicYearId, paymentTypeId, startDate, endDate, paymentMethod, month } = req.query;
+    
+    if (!academicYearId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Academic year ID is required',
+      });
+    }
+    
+    const report = await reportService.getRegistrarPaymentReports({
+      academicYearId: academicYearId as string,
+      paymentTypeId: paymentTypeId as string | undefined,
+      startDate: startDate as string | undefined,
+      endDate: endDate as string | undefined,
+      paymentMethod: paymentMethod as string | undefined,
+      month: month as string | undefined,
     });
     sendSuccess(res, report);
   } catch (error) {

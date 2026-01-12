@@ -291,8 +291,9 @@ export const getPaymentReports = async (params: {
   paymentTypeId?: string;
   month?: string; // YYYY-MM format
   registrarId?: string; // User ID of registrar who processed payment
+  paymentMethod?: string; // cash, bank_transfer, card
 }) => {
-  const { academicYearId, paymentTypeId, month, registrarId } = params;
+  const { academicYearId, paymentTypeId, month, registrarId, paymentMethod } = params;
 
   // Build where clause for payments
   const whereClause: any = {
@@ -302,6 +303,11 @@ export const getPaymentReports = async (params: {
   // Filter by payment type if provided
   if (paymentTypeId) {
     whereClause.paymentTypeId = paymentTypeId;
+  }
+
+  // Filter by payment method if provided
+  if (paymentMethod) {
+    whereClause.paymentMethod = paymentMethod;
   }
 
   // Filter by month if provided
@@ -464,12 +470,32 @@ export const getPaymentReports = async (params: {
     })),
   }));
 
+  // Get total students for the academic year (for monthly student stats)
+  let allStudentIds: string[] = [];
+  if (academicYearId) {
+    const classesInYear = await prisma.class.findMany({
+      where: { academicYearId },
+      select: { id: true },
+    });
+    const classIds = classesInYear.map(c => c.id);
+    
+    const studentClasses = await prisma.studentClass.findMany({
+      where: {
+        classId: { in: classIds },
+        endDate: null, // Active students only
+      },
+      select: { studentId: true },
+    });
+    allStudentIds = [...new Set(studentClasses.map(sc => sc.studentId))];
+  }
+
   // Group by month
   const byMonthMap = new Map<string, {
     month: string;
     totalAmount: number;
     paymentCount: number;
     breakdown: Map<string, { paymentTypeId: string; paymentTypeName: string; amount: number }>;
+    paidStudentIds: Set<string>;
   }>();
 
   confirmedPayments.forEach(payment => {
@@ -481,12 +507,14 @@ export const getPaymentReports = async (params: {
         totalAmount: 0,
         paymentCount: 0,
         breakdown: new Map(),
+        paidStudentIds: new Set(),
       });
     }
 
     const monthData = byMonthMap.get(month)!;
     monthData.totalAmount += payment.amount;
     monthData.paymentCount += 1;
+    monthData.paidStudentIds.add(payment.studentId);
 
     const typeId = payment.paymentTypeId || 'unknown';
     const typeName = payment.paymentType?.name || 'Unknown';
@@ -511,12 +539,197 @@ export const getPaymentReports = async (params: {
       totalAmount: month.totalAmount,
       paymentCount: month.paymentCount,
       breakdown: Array.from(month.breakdown.values()),
+      totalStudents: allStudentIds.length,
+      paidStudents: month.paidStudentIds.size,
+      unpaidStudents: allStudentIds.length - month.paidStudentIds.size,
+      paymentProgress: allStudentIds.length > 0 
+        ? (month.paidStudentIds.size / allStudentIds.length) * 100 
+        : 0,
     }));
 
   return {
     summary,
     byPaymentType,
     byMonth,
+  };
+};
+
+export const getRegistrarPaymentReports = async (params: {
+  academicYearId: string; // Required for registrar
+  paymentTypeId?: string;
+  startDate?: string; // YYYY-MM-DD format
+  endDate?: string; // YYYY-MM-DD format
+  paymentMethod?: string; // cash, bank_transfer, card
+  month?: string; // YYYY-MM format
+}) => {
+  const { academicYearId, paymentTypeId, startDate, endDate, paymentMethod, month } = params;
+
+  // Build where clause for payments
+  const whereClause: any = {
+    status: 'confirmed', // Only confirmed payments for revenue
+  };
+
+  // Filter by payment type if provided
+  if (paymentTypeId) {
+    whereClause.paymentTypeId = paymentTypeId;
+  }
+
+  // Filter by payment method if provided
+  if (paymentMethod) {
+    whereClause.paymentMethod = paymentMethod;
+  }
+
+  // Filter by month if provided (takes precedence over startDate/endDate)
+  if (month) {
+    // Parse month (YYYY-MM) and set date range for that month
+    const [year, monthNum] = month.split('-').map(Number);
+    const monthStart = new Date(year, monthNum - 1, 1);
+    const monthEnd = new Date(year, monthNum, 0, 23, 59, 59, 999);
+    whereClause.createdAt = {
+      gte: monthStart,
+      lte: monthEnd,
+    };
+  } else if (startDate || endDate) {
+    // Filter by date range if provided (using createdAt for day-by-day tracking)
+    whereClause.createdAt = {};
+    if (startDate) {
+      whereClause.createdAt.gte = new Date(startDate + 'T00:00:00.000Z');
+    }
+    if (endDate) {
+      whereClause.createdAt.lte = new Date(endDate + 'T23:59:59.999Z');
+    }
+  }
+
+  // Filter by academic year (required for registrar)
+  const classesInYear = await prisma.class.findMany({
+    where: { academicYearId },
+    select: { id: true },
+  });
+  const classIds = classesInYear.map(c => c.id);
+  
+  const studentClasses = await prisma.studentClass.findMany({
+    where: {
+      classId: { in: classIds },
+      endDate: null, // Active students only
+    },
+    select: { studentId: true },
+  });
+  const studentIds = [...new Set(studentClasses.map(sc => sc.studentId))];
+  
+  if (studentIds.length > 0) {
+    whereClause.studentId = { in: studentIds };
+  } else {
+    // No students in this academic year, return empty result
+    return {
+      summary: {
+        totalRevenue: 0,
+        todayRevenue: 0,
+        paymentCount: 0,
+      },
+      byDate: [],
+    };
+  }
+
+  // Get all confirmed payments
+  const confirmedPayments = await prisma.payment.findMany({
+    where: whereClause,
+    include: {
+      paymentType: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  // Calculate today's date for todayRevenue
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  // Calculate summary
+  const totalRevenue = confirmedPayments.reduce((sum, p) => sum + p.amount, 0);
+  const todayRevenue = confirmedPayments
+    .filter(p => {
+      const paymentDate = new Date(p.createdAt);
+      return paymentDate >= today && paymentDate < tomorrow;
+    })
+    .reduce((sum, p) => sum + p.amount, 0);
+
+  const summary = {
+    totalRevenue,
+    todayRevenue,
+    paymentCount: confirmedPayments.length,
+  };
+
+  // Group by date (day level, using createdAt)
+  const byDateMap = new Map<string, {
+    date: string; // YYYY-MM-DD format
+    totalAmount: number;
+    paymentCount: number;
+    breakdown: Map<string, {
+      paymentTypeId: string;
+      paymentTypeName: string;
+      amount: number;
+      count: number;
+    }>;
+  }>();
+
+  confirmedPayments.forEach(payment => {
+    // Extract date from createdAt (YYYY-MM-DD format)
+    const paymentDate = new Date(payment.createdAt);
+    const dateStr = paymentDate.toISOString().split('T')[0]; // YYYY-MM-DD
+
+    if (!byDateMap.has(dateStr)) {
+      byDateMap.set(dateStr, {
+        date: dateStr,
+        totalAmount: 0,
+        paymentCount: 0,
+        breakdown: new Map(),
+      });
+    }
+
+    const dateData = byDateMap.get(dateStr)!;
+    dateData.totalAmount += payment.amount;
+    dateData.paymentCount += 1;
+
+    // Group by payment type within each date
+    const typeId = payment.paymentTypeId || 'unknown';
+    const typeName = payment.paymentType?.name || 'Unknown';
+    const breakdownKey = `${typeId}-${typeName}`;
+
+    if (!dateData.breakdown.has(breakdownKey)) {
+      dateData.breakdown.set(breakdownKey, {
+        paymentTypeId: typeId,
+        paymentTypeName: typeName,
+        amount: 0,
+        count: 0,
+      });
+    }
+
+    const breakdownData = dateData.breakdown.get(breakdownKey)!;
+    breakdownData.amount += payment.amount;
+    breakdownData.count += 1;
+  });
+
+  // Convert to array and sort by date descending (most recent first)
+  const byDate = Array.from(byDateMap.values())
+    .sort((a, b) => b.date.localeCompare(a.date)) // Descending order
+    .map(date => ({
+      date: date.date,
+      totalAmount: date.totalAmount,
+      paymentCount: date.paymentCount,
+      breakdown: Array.from(date.breakdown.values()),
+    }));
+
+  return {
+    summary,
+    byDate,
   };
 };
 
