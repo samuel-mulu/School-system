@@ -71,10 +71,11 @@ export const getRegistrarPaymentReports = async (
     const { academicYearId, paymentTypeId, startDate, endDate, paymentMethod, month } = req.query;
     
     if (!academicYearId) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Academic year ID is required',
       });
+      return;
     }
     
     const report = await reportService.getRegistrarPaymentReports({

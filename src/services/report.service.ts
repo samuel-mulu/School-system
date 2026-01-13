@@ -303,7 +303,7 @@ export const getPaymentReports = async (params: {
   registrarId?: string; // User ID of registrar who processed payment
   paymentMethod?: string; // cash, bank_transfer, card
 }) => {
-  const { academicYearId, paymentTypeId, month, registrarId, paymentMethod } = params;
+  const { academicYearId, paymentTypeId, month, registrarId: _registrarId, paymentMethod } = params;
 
   // Build where clause for payments
   const whereClause: any = {

@@ -1,5 +1,6 @@
 import { UserRole } from "@prisma/client";
 import jwt from 'jsonwebtoken';
+import type { CookieOptions } from 'express';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
@@ -24,13 +25,13 @@ export const verifyToken = (token: string): JWTPayload => {
   }
 };
 
-export const getCookieOptions = () => {
+export const getCookieOptions = (): CookieOptions => {
   const isProduction = process.env.NODE_ENV === 'production';
 
   return {
     httpOnly: true,
     secure: isProduction,
-    sameSite: isProduction ? 'none' : 'lax',
+    sameSite: isProduction ? ('none' as const) : ('lax' as const),
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: '/',
   };
