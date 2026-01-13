@@ -5,7 +5,7 @@ import { Request } from 'express';
 const storage = multer.memoryStorage();
 
 // File filter - only allow images
-const fileFilter = (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   // Check if file is an image
   if (file.mimetype.startsWith('image/')) {
     cb(null, true);
