@@ -4,6 +4,7 @@ import * as paymentController from "../controllers/payment.controller.js";
 import { validate } from "../middleware/validation.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRegistrarOrOwner } from "../middleware/role.js";
+import { uploadSingle } from "../middleware/upload.js";
 
 const router = Router();
 
@@ -16,6 +17,8 @@ const createPaymentSchema = z.object({
     year: z.number().int().min(2000).max(3000),
     paymentMethod: z.string().optional(),
     notes: z.string().optional(),
+    proofImageUrl: z.string().url().optional(),
+    transactionNumber: z.string().optional(),
     amount: z.number().positive().optional(), // Optional for backward compatibility, but will be fetched from PaymentType
   }),
 });
@@ -27,6 +30,8 @@ const createBulkPaymentSchema = z.object({
     months: z.array(z.string().regex(/^\d{4}-\d{2}$/, 'Month must be in YYYY-MM format')).min(1, 'At least one month must be provided'),
     paymentMethod: z.string().optional(),
     notes: z.string().optional(),
+    proofImageUrl: z.string().url().optional(),
+    transactionNumber: z.string().optional(),
   }),
 });
 
@@ -34,6 +39,8 @@ const confirmPaymentSchema = z.object({
   body: z.object({
     paymentDate: z.coerce.date().optional(),
     paymentMethod: z.string().optional(),
+    proofImageUrl: z.string().url().optional(),
+    transactionNumber: z.string().optional(),
   }),
 });
 
@@ -42,6 +49,8 @@ const confirmBulkPaymentsSchema = z.object({
     paymentIds: z.array(z.string().uuid()).min(1, 'At least one payment ID is required'),
     paymentDate: z.coerce.date().optional(),
     paymentMethod: z.string().optional(),
+    proofImageUrl: z.string().url().optional(),
+    transactionNumber: z.string().optional(),
   }),
 });
 
@@ -118,6 +127,14 @@ router.delete(
   authenticate,
   requireRegistrarOrOwner,
   paymentController.deletePayment
+);
+
+router.post(
+  '/upload-proof',
+  authenticate,
+  requireRegistrarOrOwner,
+  uploadSingle,
+  paymentController.uploadPaymentProof
 );
 
 export default router;

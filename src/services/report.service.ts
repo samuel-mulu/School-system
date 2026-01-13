@@ -259,6 +259,15 @@ export const getClassReport = async (classId: string, term?: string) => {
     };
   });
 
+  // Get students from classRecord
+  const students = classRecord.studentClasses.map((sc: any) => ({
+    id: sc.student.id,
+    firstName: sc.student.firstName,
+    lastName: sc.student.lastName,
+    email: sc.student.email || undefined,
+    classStatus: sc.student.classStatus,
+  }));
+
   return {
     class: {
       id: classRecord.id,
@@ -266,6 +275,7 @@ export const getClassReport = async (classId: string, term?: string) => {
     },
     term: term || 'all',
     studentCount: classRecord.studentClasses.length,
+    students,
     attendanceSummary: {
       totalRecords: attendance.length,
       averageAttendanceRate:

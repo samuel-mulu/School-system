@@ -4,6 +4,7 @@ import * as studentController from "../controllers/student.controller.js";
 import { validate } from "../middleware/validation.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRegistrarOrOwner } from "../middleware/role.js";
+import { uploadSingle } from "../middleware/upload.js";
 
 const router = Router();
 
@@ -38,6 +39,7 @@ const createStudentSchema = z.object({
     transferReason: z.string().optional(),
     classId: z.string().uuid().optional(),
     assignClassReason: z.string().optional(),
+    profileImageUrl: z.string().url().optional(),
   }),
 });
 
@@ -60,6 +62,14 @@ const transferSchema = z.object({
 });
 
 // Routes
+router.post(
+  '/upload-image',
+  authenticate,
+  requireRegistrarOrOwner,
+  uploadSingle,
+  studentController.uploadStudentImage
+);
+
 router.post(
   '/',
   authenticate,

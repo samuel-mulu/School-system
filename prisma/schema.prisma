@@ -84,6 +84,7 @@ model Student {
   gender          String
   nationality     String?
   religion        String?
+  profileImageUrl String?
   
   // Contact info
   email           String?
@@ -387,8 +388,10 @@ model Payment {
   year          Int
   status        PaymentStatus  @default(pending)
   paymentDate   DateTime?
-  paymentMethod String?        // e.g., "cash", "bank_transfer", "card"
+  paymentMethod String?        // e.g., "cash", "bank_transfer", "card", "mobile_banking"
   notes         String?
+  proofImageUrl String?        // Cloudinary URL for mobile banking transfer proof image
+  transactionNumber String?    // Transaction/reference number for mobile banking payments
   receiptId     String?        // Foreign key to Receipt (allows multiple payments per receipt)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt

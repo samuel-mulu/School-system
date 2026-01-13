@@ -1,6 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
 import * as studentService from "../services/student.service.js";
 import { sendSuccess } from "../utils/responses.js";
+import { uploadToCloudinary } from "../utils/cloudinary.js";
+import { BadRequestError } from "../utils/errors.js";
 
 export const createStudent = async (
   req: Request,
@@ -112,6 +114,42 @@ export const deleteStudent = async (
   try {
     const result = await studentService.deleteStudent(req.params.id);
     sendSuccess(res, result, 'Student deleted successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const uploadStudentImage = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const file = req.file;
+    
+    if (!file) {
+      throw new BadRequestError('No image file provided');
+    }
+
+    // Validate file type
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestError('File must be an image');
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      throw new BadRequestError('Image size must be less than 5MB');
+    }
+
+    // Upload to Cloudinary
+    const result = await uploadToCloudinary(file.buffer, {
+      folder: 'students/profiles',
+    });
+
+    sendSuccess(res, {
+      imageUrl: result.secure_url,
+      publicId: result.public_id,
+    }, 'Image uploaded successfully');
   } catch (error) {
     next(error);
   }

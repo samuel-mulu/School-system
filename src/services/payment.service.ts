@@ -9,6 +9,8 @@ interface CreatePaymentData {
   year: number;
   paymentMethod?: string;
   notes?: string;
+  proofImageUrl?: string;
+  transactionNumber?: string;
   amount?: number; // Optional for backward compatibility, but will be fetched from PaymentType
 }
 
@@ -18,6 +20,8 @@ interface CreateBulkPaymentData {
   months: string[]; // Array of YYYY-MM format
   paymentMethod?: string;
   notes?: string;
+  proofImageUrl?: string;
+  transactionNumber?: string;
 }
 
 export const createPayment = async (data: CreatePaymentData) => {
@@ -80,6 +84,8 @@ export const createPayment = async (data: CreatePaymentData) => {
       year: data.year,
       paymentMethod: data.paymentMethod,
       notes: data.notes,
+      proofImageUrl: data.proofImageUrl,
+      transactionNumber: data.transactionNumber,
       status: PaymentStatus.pending,
     },
     include: {
@@ -194,6 +200,8 @@ export const createBulkPayments = async (data: CreateBulkPaymentData) => {
               year: year,
               paymentMethod: data.paymentMethod,
               notes: data.notes,
+              proofImageUrl: data.proofImageUrl,
+              transactionNumber: data.transactionNumber,
               status: PaymentStatus.pending,
             },
             include: {
@@ -308,7 +316,9 @@ export const getPaymentById = async (id: string) => {
 export const confirmPayment = async (
   id: string,
   paymentDate?: Date,
-  paymentMethod?: string
+  paymentMethod?: string,
+  proofImageUrl?: string,
+  transactionNumber?: string
 ) => {
   const payment = await prisma.payment.findUnique({
     where: { id },
@@ -341,6 +351,8 @@ export const confirmPayment = async (
       status: PaymentStatus.confirmed,
       paymentDate: paymentDate || new Date(),
       paymentMethod: paymentMethod || payment.paymentMethod,
+      proofImageUrl: proofImageUrl !== undefined ? proofImageUrl : payment.proofImageUrl,
+      transactionNumber: transactionNumber !== undefined ? transactionNumber : payment.transactionNumber,
     },
     include: {
       student: {
@@ -406,7 +418,9 @@ export const confirmPayment = async (
 export const confirmBulkPayments = async (
   paymentIds: string[],
   paymentDate?: Date,
-  paymentMethod?: string
+  paymentMethod?: string,
+  proofImageUrl?: string,
+  transactionNumber?: string
 ) => {
   if (!Array.isArray(paymentIds) || paymentIds.length === 0) {
     throw new BadRequestError('At least one payment ID must be provided');
@@ -471,6 +485,16 @@ export const confirmBulkPayments = async (
     // Only update paymentMethod if provided
     if (paymentMethod) {
       updateData.paymentMethod = paymentMethod;
+    }
+    
+    // Only update proofImageUrl if provided
+    if (proofImageUrl !== undefined) {
+      updateData.proofImageUrl = proofImageUrl;
+    }
+    
+    // Only update transactionNumber if provided
+    if (transactionNumber !== undefined) {
+      updateData.transactionNumber = transactionNumber;
     }
 
     // Update all payments at once using updateMany (more efficient)

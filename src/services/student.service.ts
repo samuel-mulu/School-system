@@ -1,6 +1,7 @@
 import { ClassStatus, PaymentStatus } from "@prisma/client";
 import { prisma } from "../config/db.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../utils/errors.js";
+import { deleteImageByUrl } from "../utils/cloudinary.js";
 
 interface CreateStudentData {
   // Personal details
@@ -44,6 +45,9 @@ interface CreateStudentData {
   // Optional class assignment during creation
   classId?: string;
   assignClassReason?: string;
+  
+  // Profile image
+  profileImageUrl?: string;
 }
 
 interface UpdateStudentData extends Partial<CreateStudentData> {}
@@ -144,7 +148,7 @@ export const getStudents = async (filters?: {
   userRole?: string;
 }) => {
   const page = filters?.page || 1;
-  const limit = filters?.limit || 50;
+  const limit = filters?.limit || 40;
   const skip = (page - 1) * limit;
 
   const where: any = {};
@@ -345,6 +349,17 @@ export const updateStudent = async (id: string, data: UpdateStudentData) => {
     }
     
     updateData.dateOfBirth = dateOfBirth;
+  }
+
+  // Handle profile image update - delete old image if new one is provided
+  if (data.profileImageUrl && student.profileImageUrl && data.profileImageUrl !== student.profileImageUrl) {
+    // New image provided and different from old one - delete old image
+    try {
+      await deleteImageByUrl(student.profileImageUrl);
+    } catch (error) {
+      // Log error but don't fail the update if image deletion fails
+      console.error('Failed to delete old profile image:', error);
+    }
   }
 
   const updated = await prisma.student.update({

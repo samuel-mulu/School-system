@@ -1,6 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
 import * as paymentService from "../services/payment.service.js";
 import { sendSuccess } from "../utils/responses.js";
+import { uploadToCloudinary } from "../utils/cloudinary.js";
+import { BadRequestError } from "../utils/errors.js";
 
 export const createPayment = async (
   req: Request,
@@ -68,11 +70,13 @@ export const confirmPayment = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { paymentDate, paymentMethod } = req.body;
+    const { paymentDate, paymentMethod, proofImageUrl, transactionNumber } = req.body;
     const result = await paymentService.confirmPayment(
       req.params.id,
       paymentDate ? new Date(paymentDate) : undefined,
-      paymentMethod
+      paymentMethod,
+      proofImageUrl,
+      transactionNumber
     );
     sendSuccess(res, result, 'Payment confirmed successfully');
   } catch (error) {
@@ -86,14 +90,16 @@ export const confirmBulkPayments = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { paymentIds, paymentDate, paymentMethod } = req.body;
+    const { paymentIds, paymentDate, paymentMethod, proofImageUrl, transactionNumber } = req.body;
     if (!Array.isArray(paymentIds) || paymentIds.length === 0) {
       return next(new Error('paymentIds array is required'));
     }
     const result = await paymentService.confirmBulkPayments(
       paymentIds,
       paymentDate ? new Date(paymentDate) : undefined,
-      paymentMethod
+      paymentMethod,
+      proofImageUrl,
+      transactionNumber
     );
     sendSuccess(res, result, `Successfully confirmed ${result.payments.length} payment${result.payments.length !== 1 ? 's' : ''} with receipt ${result.receipt.receiptNumber}`);
   } catch (error) {
@@ -152,6 +158,42 @@ export const deletePayment = async (
   try {
     const result = await paymentService.deletePayment(req.params.id);
     sendSuccess(res, result, 'Payment deleted successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const uploadPaymentProof = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const file = req.file;
+    
+    if (!file) {
+      throw new BadRequestError('No image file provided');
+    }
+
+    // Validate file type
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestError('File must be an image');
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      throw new BadRequestError('Image size must be less than 5MB');
+    }
+
+    // Upload to Cloudinary
+    const result = await uploadToCloudinary(file.buffer, {
+      folder: 'students/payments',
+    });
+
+    sendSuccess(res, {
+      imageUrl: result.secure_url,
+      publicId: result.public_id,
+    }, 'Payment proof image uploaded successfully');
   } catch (error) {
     next(error);
   }

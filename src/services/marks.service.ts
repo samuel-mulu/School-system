@@ -301,7 +301,7 @@ export const getMarks = async (filters?: {
   limit?: number;
 }) => {
   const page = filters?.page || 1;
-  const limit = filters?.limit || 50;
+  const limit = filters?.limit || 40;
   const skip = (page - 1) * limit;
 
   const where: any = {};
