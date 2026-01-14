@@ -80,6 +80,12 @@ router.get(
   attendanceController.getClassAttendanceDates
 );
 
+router.get(
+  '/class/:classId/summary',
+  authenticate,
+  attendanceController.getClassAttendanceSummary
+);
+
 router.patch(
   '/:id',
   authenticate,

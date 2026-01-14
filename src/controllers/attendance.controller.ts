@@ -150,3 +150,20 @@ export const getClassAttendanceDates = async (
   }
 };
 
+export const getClassAttendanceSummary = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { classId } = req.params;
+    const summary = await attendanceService.getClassAttendanceSummary(
+      classId,
+      req.user?.userId,
+      req.user?.role
+    );
+    sendSuccess(res, summary);
+  } catch (error) {
+    next(error);
+  }
+};

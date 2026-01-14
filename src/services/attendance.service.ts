@@ -462,7 +462,8 @@ export const getClassAttendanceDates = async (
     }
   }
 
-  // Get distinct dates for this class, ordered by date descending
+  // Get all attendance records for this class to extract unique dates
+  // Fetch ALL records without any limit to ensure we get all dates
   const attendanceRecords = await prisma.attendance.findMany({
     where: {
       classId,
@@ -470,22 +471,99 @@ export const getClassAttendanceDates = async (
     select: {
       date: true,
     },
-    distinct: ['date'],
     orderBy: {
       date: 'desc',
     },
+    // No limit - get all records to ensure all dates are included
   });
 
-  // Extract unique dates and format them
-  const dates = attendanceRecords.map((record: { date: Date | string }) => {
+  // Extract unique dates and format them as YYYY-MM-DD
+  const dateSet = new Set<string>();
+  attendanceRecords.forEach((record: { date: Date | string }) => {
     const date = new Date(record.date);
     date.setHours(0, 0, 0, 0);
-    return date.toISOString().split('T')[0];
+    const dateStr = date.toISOString().split('T')[0];
+    dateSet.add(dateStr);
   });
 
-  // Remove duplicates (in case of any timezone issues)
-  const uniqueDates = Array.from(new Set(dates));
+  // Convert set to array and sort descending (newest first)
+  const uniqueDates = Array.from(dateSet).sort((a, b) => {
+    return new Date(b).getTime() - new Date(a).getTime();
+  });
 
   return uniqueDates;
 };
 
+export const getClassAttendanceSummary = async (
+  classId: string,
+  userId?: string,
+  userRole?: string
+) => {
+  // Verify class exists
+  const classRecord = await prisma.class.findUnique({
+    where: { id: classId },
+    include: {
+      studentClasses: {
+        where: {
+          endDate: null, // Active students
+        },
+      },
+    },
+  });
+
+  if (!classRecord) {
+    throw new NotFoundError('Class not found');
+  }
+
+  // If user is a TEACHER, check if they are the head teacher
+  if (userRole === 'TEACHER' && userId) {
+    if (classRecord.headTeacherId !== userId) {
+      throw new NotFoundError('Class not found');
+    }
+  }
+
+  // Get all attendance records for this class
+  const attendanceRecords = await prisma.attendance.findMany({
+    where: {
+      classId,
+    },
+    select: {
+      date: true,
+      status: true,
+    },
+  });
+
+  // Get total number of students in the class
+  const totalStudents = classRecord.studentClasses.length;
+
+  // Group by date and calculate statistics
+  const dateMap = new Map<string, { present: number; absent: number; late: number }>();
+
+  attendanceRecords.forEach((record) => {
+    const date = new Date(record.date);
+    date.setHours(0, 0, 0, 0);
+    const dateStr = date.toISOString().split('T')[0];
+
+    if (!dateMap.has(dateStr)) {
+      dateMap.set(dateStr, { present: 0, absent: 0, late: 0 });
+    }
+
+    const stats = dateMap.get(dateStr)!;
+    if (record.status === 'present') stats.present++;
+    else if (record.status === 'absent') stats.absent++;
+    else if (record.status === 'late') stats.late++;
+  });
+
+  // Convert to array and format
+  const summary = Array.from(dateMap.entries())
+    .map(([date, stats]) => ({
+      date,
+      present: stats.present,
+      absent: stats.absent,
+      late: stats.late,
+      total: totalStudents,
+    }))
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  return summary;
+};

@@ -73,12 +73,28 @@ export const login = async (data: LoginData) => {
     role: user.role,
   });
 
+  // Get teacher classes if user is a teacher
+  let teacherClasses: Array<{ id: string; name: string }> | undefined;
+  if (user.role === 'TEACHER') {
+    const classes = await prisma.class.findMany({
+      where: { headTeacherId: user.id },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+    teacherClasses = classes;
+  }
+
   return {
     user: {
       id: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      teacherClasses,
     },
     token,
   };
@@ -93,6 +109,13 @@ export const getCurrentUser = async (userId: string) => {
       name: true,
       role: true,
       createdAt: true,
+      updatedAt: true,
+      teacherClasses: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
     },
   });
 
