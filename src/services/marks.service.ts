@@ -42,17 +42,27 @@ export const createMark = async (
     }
   }
 
-  // Verify subject exists and belongs to class
+  // Verify subject exists
   const subject = await prisma.subject.findUnique({
     where: { id: data.subjectId },
+    include: {
+      grade: {
+        include: {
+          classes: {
+            where: { id: data.classId },
+          },
+        },
+      },
+    },
   });
 
   if (!subject) {
     throw new NotFoundError('Subject not found');
   }
 
-  if (subject.classId !== data.classId) {
-    throw new BadRequestError('Subject does not belong to this class');
+  // Verify class belongs to the same grade as the subject
+  if (!subject.grade.classes.some((c) => c.id === data.classId)) {
+    throw new BadRequestError('Subject does not belong to this class\'s grade');
   }
 
   // Verify term exists
@@ -64,7 +74,7 @@ export const createMark = async (
     throw new NotFoundError('Term not found');
   }
 
-  // Verify sub-exam exists and belongs to subject and term
+  // Verify sub-exam exists and belongs to subject
   const subExam = await prisma.subExam.findUnique({
     where: { id: data.subExamId },
   });
@@ -73,8 +83,8 @@ export const createMark = async (
     throw new NotFoundError('Sub-exam not found');
   }
 
-  if (subExam.subjectId !== data.subjectId || subExam.termId !== data.termId) {
-    throw new BadRequestError('Sub-exam does not belong to this subject and term');
+  if (subExam.subjectId !== data.subjectId) {
+    throw new BadRequestError('Sub-exam does not belong to this subject');
   }
 
   // Check if student is/was assigned to this class
@@ -171,6 +181,7 @@ export const createMark = async (
 export const recordMark = async (
   studentId: string,
   subExamId: string,
+  termId: string,
   score: number,
   notes?: string,
   userId?: string,
@@ -182,7 +193,11 @@ export const recordMark = async (
     include: {
       subject: {
         include: {
-          class: true,
+          grade: {
+            include: {
+              classes: true,
+            },
+          },
         },
       },
     },
@@ -192,9 +207,43 @@ export const recordMark = async (
     throw new NotFoundError('Sub-exam not found');
   }
 
+  // Verify term exists
+  const term = await prisma.term.findUnique({
+    where: { id: termId },
+  });
+
+  if (!term) {
+    throw new NotFoundError('Term not found');
+  }
+
+  // Get student's class assignment
+  const studentClass = await prisma.studentClass.findFirst({
+    where: {
+      studentId,
+      endDate: null, // Active assignment
+    },
+    include: {
+      class: true,
+    },
+    orderBy: {
+      startDate: 'desc',
+    },
+  });
+
+  if (!studentClass) {
+    throw new BadRequestError('Student is not assigned to any class');
+  }
+
+  const classId = studentClass.classId;
+
+  // Verify class belongs to the same grade as the subject
+  if (!subExam.subject.grade.classes.some((c) => c.id === classId)) {
+    throw new BadRequestError('Student\'s class does not belong to the same grade as the subject');
+  }
+
   // If user is a TEACHER, verify they are head teacher of the class
   if (userRole === 'TEACHER' && userId) {
-    if (subExam.subject.class.headTeacherId !== userId) {
+    if (studentClass.class.headTeacherId !== userId) {
       throw new NotFoundError('Sub-exam not found');
     }
   }
@@ -205,7 +254,7 @@ export const recordMark = async (
       studentId_subjectId_termId_subExamId: {
         studentId,
         subjectId: subExam.subjectId,
-        termId: subExam.termId,
+        termId,
         subExamId,
       },
     },
@@ -225,9 +274,9 @@ export const recordMark = async (
   return createMark(
     {
       studentId,
-      classId: subExam.subject.classId,
+      classId,
       subjectId: subExam.subjectId,
-      termId: subExam.termId,
+      termId,
       subExamId,
       score,
       notes: notes || undefined,
@@ -239,6 +288,7 @@ export const recordMark = async (
 
 export const recordBulkMarks = async (
   subExamId: string,
+  termId: string,
   marksData: Array<{ studentId: string; score: number; notes?: string }>,
   userId?: string,
   userRole?: string
@@ -249,7 +299,11 @@ export const recordBulkMarks = async (
     include: {
       subject: {
         include: {
-          class: true,
+          grade: {
+            include: {
+              classes: true,
+            },
+          },
         },
       },
     },
@@ -259,11 +313,13 @@ export const recordBulkMarks = async (
     throw new NotFoundError('Sub-exam not found');
   }
 
-  // If user is a TEACHER, verify they are head teacher of the class
-  if (userRole === 'TEACHER' && userId) {
-    if (subExam.subject.class.headTeacherId !== userId) {
-      throw new NotFoundError('Sub-exam not found');
-    }
+  // Verify term exists
+  const term = await prisma.term.findUnique({
+    where: { id: termId },
+  });
+
+  if (!term) {
+    throw new NotFoundError('Term not found');
   }
 
   const results = [];
@@ -273,6 +329,7 @@ export const recordBulkMarks = async (
       const mark = await recordMark(
         markData.studentId,
         subExamId,
+        termId,
         markData.score,
         markData.notes,
         userId,
@@ -784,13 +841,28 @@ export const getTermReport = async (studentId: string, termId: string) => {
     include: {
       class: {
         include: {
-          subjects: true,
+          grade: {
+            include: {
+              subjects: true,
+            },
+          },
         },
       },
     },
   });
 
-  const subjects = studentClasses.flatMap((sc: any) => sc.class.subjects);
+  // Get unique subjects from all classes' grades
+  const subjectsMap = new Map();
+  studentClasses.forEach((sc: any) => {
+    if (sc.class.grade?.subjects) {
+      sc.class.grade.subjects.forEach((subject: any) => {
+        if (!subjectsMap.has(subject.id)) {
+          subjectsMap.set(subject.id, subject);
+        }
+      });
+    }
+  });
+  const subjects = Array.from(subjectsMap.values());
 
   // Calculate term scores for each subject
   const subjectScores = await Promise.all(

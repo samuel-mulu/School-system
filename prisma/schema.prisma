@@ -147,6 +147,8 @@ model Grade {
 
   // Relations
   classes Class[]
+  subjects Subject[]
+  subExams SubExam[]
 
   @@index([order])
   @@index([isHighest])
@@ -199,7 +201,6 @@ model Class {
   grade        Grade?        @relation(fields: [gradeId], references: [id])
   
   studentClasses StudentClass[]
-  subjects       Subject[]
   attendance     Attendance[]
   marks          Mark[]
 
@@ -245,10 +246,10 @@ model Teacher {
   @@index([userId])
 }
 
-// Subject model - subjects per class
+// Subject model - subjects per grade
 model Subject {
   id          String   @id @default(uuid())
-  classId     String
+  gradeId     String
   name        String   // e.g., "Math", "English"
   code        String?  // Subject code
   description String?
@@ -256,12 +257,12 @@ model Subject {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  class    Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
+  grade    Grade     @relation(fields: [gradeId], references: [id], onDelete: Cascade)
   marks    Mark[]
   subExams SubExam[]
 
-  @@index([classId])
-  @@unique([classId, name])
+  @@index([gradeId])
+  @@unique([gradeId, name])
 }
 
 // Term model - academic terms (Term 1, Term 2)
@@ -277,7 +278,6 @@ model Term {
 
   // Relations
   academicYear  AcademicYear    @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  subExams      SubExam[]
   marks         Mark[]
 
   @@unique([name, academicYearId]) // Term name unique per academic year
@@ -285,11 +285,11 @@ model Term {
   @@index([status])
 }
 
-// SubExam model - sub-examinations per subject and term
+// SubExam model - sub-examinations per grade and subject (shared across all terms)
 model SubExam {
   id           String   @id @default(uuid())
+  gradeId      String
   subjectId    String
-  termId       String
   name         String   // "Quiz 1", "Assignment 1", "Mid Exam", "General Test"
   maxScore     Float    // e.g., 5, 10, 20, 100
   weightPercent Float   // e.g., 5%, 10%, 20%, 40%
@@ -298,14 +298,14 @@ model SubExam {
   updatedAt    DateTime @updatedAt
 
   // Relations
-  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  term    Term    @relation(fields: [termId], references: [id], onDelete: Cascade)
+  grade    Grade    @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  subject Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   marks   Mark[]
 
-  @@unique([subjectId, termId, name])
+  @@unique([gradeId, subjectId, name])
+  @@index([gradeId])
   @@index([subjectId])
-  @@index([termId])
-  @@index([subjectId, termId])
+  @@index([gradeId, subjectId])
 }
 
 // Attendance model - daily attendance records

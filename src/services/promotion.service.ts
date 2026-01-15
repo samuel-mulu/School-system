@@ -44,9 +44,19 @@ export const calculateStudentYearlyAverage = async (
   studentId: string,
   classId: string
 ): Promise<number> => {
-  // Get all subjects for the class
+  // Get the class to find its grade
+  const classRecord = await prisma.class.findUnique({
+    where: { id: classId },
+    select: { gradeId: true },
+  });
+
+  if (!classRecord || !classRecord.gradeId) {
+    return 0;
+  }
+
+  // Get all subjects for the class's grade
   const subjects = await prisma.subject.findMany({
-    where: { classId },
+    where: { gradeId: classRecord.gradeId },
   });
 
   if (subjects.length === 0) {

@@ -72,7 +72,6 @@ export const createClass = async (data: CreateClassData) => {
           student: true,
         },
       },
-      subjects: true,
     },
   });
 
@@ -120,7 +119,6 @@ export const getClasses = async (filters?: {
             student: true,
           },
         },
-        subjects: true,
       },
       skip,
       take: limit,
@@ -159,16 +157,6 @@ export const getClassById = async (
         },
         orderBy: {
           startDate: 'desc',
-        },
-      },
-      subjects: {
-        include: {
-          marks: {
-            take: 10,
-            orderBy: {
-              createdAt: 'desc',
-            },
-          },
         },
       },
     },
@@ -260,7 +248,6 @@ export const updateClass = async (id: string, data: UpdateClassData) => {
           student: true,
         },
       },
-      subjects: true,
     },
   });
 
@@ -296,48 +283,63 @@ export const deleteClass = async (id: string) => {
 
 // Subject management
 export const createSubject = async (
-  classId: string,
+  gradeId: string,
   data: { name: string; code?: string; description?: string },
   userId?: string,
   userRole?: string
 ) => {
-  const classRecord = await prisma.class.findUnique({
-    where: { id: classId },
+  const grade = await prisma.grade.findUnique({
+    where: { id: gradeId },
   });
 
-  if (!classRecord) {
-    throw new NotFoundError('Class not found');
+  if (!grade) {
+    throw new NotFoundError('Grade not found');
   }
 
-  // If user is a TEACHER, check if they are the head teacher
-  if (userRole === 'TEACHER' && userId) {
-    if (classRecord.headTeacherId !== userId) {
-      throw new NotFoundError('Class not found');
-    }
-  }
-
-  // Check if subject already exists for this class
+  // Check if subject already exists for this grade
   const existing = await prisma.subject.findFirst({
     where: {
-      classId,
+      gradeId,
       name: data.name,
     },
   });
 
   if (existing) {
-    throw new ConflictError('Subject with this name already exists for this class');
+    throw new ConflictError('Subject with this name already exists for this grade');
   }
 
   const subject = await prisma.subject.create({
     data: {
       ...data,
-      classId,
+      gradeId,
     },
   });
 
   return subject;
 };
 
+export const getSubjectsByGrade = async (
+  gradeId: string
+) => {
+  const grade = await prisma.grade.findUnique({
+    where: { id: gradeId },
+  });
+
+  if (!grade) {
+    throw new NotFoundError('Grade not found');
+  }
+
+  const subjects = await prisma.subject.findMany({
+    where: { gradeId },
+    orderBy: {
+      name: 'asc',
+    },
+  });
+
+  return subjects;
+};
+
+// Helper function to get subjects by class (via class's grade)
 export const getSubjectsByClass = async (
   classId: string,
   userId?: string,
@@ -345,10 +347,17 @@ export const getSubjectsByClass = async (
 ) => {
   const classRecord = await prisma.class.findUnique({
     where: { id: classId },
+    include: {
+      grade: true,
+    },
   });
 
   if (!classRecord) {
     throw new NotFoundError('Class not found');
+  }
+
+  if (!classRecord.gradeId) {
+    throw new NotFoundError('Class does not have a grade assigned');
   }
 
   // If user is a TEACHER, check if they are the head teacher
@@ -359,7 +368,7 @@ export const getSubjectsByClass = async (
   }
 
   const subjects = await prisma.subject.findMany({
-    where: { classId },
+    where: { gradeId: classRecord.gradeId },
     orderBy: {
       name: 'asc',
     },
@@ -377,7 +386,7 @@ export const updateSubject = async (
   const subject = await prisma.subject.findUnique({
     where: { id: subjectId },
     include: {
-      class: true,
+      grade: true,
     },
   });
 
@@ -385,24 +394,17 @@ export const updateSubject = async (
     throw new NotFoundError('Subject not found');
   }
 
-  // If user is a TEACHER, check if they are the head teacher of the class
-  if (userRole === 'TEACHER' && userId) {
-    if (subject.class.headTeacherId !== userId) {
-      throw new NotFoundError('Subject not found');
-    }
-  }
-
   // Check name uniqueness if name is being updated
   if (data.name && data.name !== subject.name) {
     const existing = await prisma.subject.findFirst({
       where: {
-        classId: subject.classId,
+        gradeId: subject.gradeId,
         name: data.name,
       },
     });
 
     if (existing) {
-      throw new ConflictError('Subject with this name already exists for this class');
+      throw new ConflictError('Subject with this name already exists for this grade');
     }
   }
 
@@ -425,19 +427,11 @@ export const deleteSubject = async (
       marks: {
         take: 1,
       },
-      class: true,
     },
   });
 
   if (!subject) {
     throw new NotFoundError('Subject not found');
-  }
-
-  // If user is a TEACHER, check if they are the head teacher of the class
-  if (userRole === 'TEACHER' && userId) {
-    if (subject.class.headTeacherId !== userId) {
-      throw new NotFoundError('Subject not found');
-    }
   }
 
   if (subject.marks.length > 0) {

@@ -15,16 +15,16 @@ export const createSubExam = async (
   }
 };
 
-export const getSubExamsBySubjectAndTerm = async (
+export const getSubExamsBySubject = async (
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { subjectId, termId } = req.params;
-    const subExams = await subExamService.getSubExamsBySubjectAndTerm(
-      subjectId,
-      termId
+    const { gradeId, subjectId } = req.params;
+    const subExams = await subExamService.getSubExamsBySubject(
+      gradeId,
+      subjectId
     );
     sendSuccess(res, subExams);
   } catch (error) {

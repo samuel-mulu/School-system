@@ -47,16 +47,15 @@ export const calculateTermTotal = async (
     weightedScore: number;
   }>;
 }> => {
-  // Get all sub-exams for this subject and term
+  // Get all sub-exams for this subject (sub-exams are shared across all terms)
   const subExams = await prisma.subExam.findMany({
     where: {
       subjectId,
-      termId,
     },
   });
 
   if (subExams.length === 0) {
-    throw new NotFoundError('No sub-exams found for this subject and term');
+    throw new NotFoundError('No sub-exams found for this subject');
   }
 
   // Get all marks for this student, subject, and term
@@ -209,13 +208,18 @@ export const generateRoster = async (
     rank: number;
   }>;
 }> => {
-  // Verify class exists
+  // Verify class exists and get gradeId
   const classRecord = await prisma.class.findUnique({
     where: { id: classId },
+    select: { id: true, name: true, gradeId: true },
   });
 
   if (!classRecord) {
     throw new NotFoundError('Class not found');
+  }
+
+  if (!classRecord.gradeId) {
+    throw new NotFoundError('Class does not have a grade assigned');
   }
 
   // Get all students in this class
@@ -235,9 +239,8 @@ export const generateRoster = async (
     },
   });
 
-  // Get all subjects for this class
   const subjects = await prisma.subject.findMany({
-    where: { classId },
+    where: { gradeId: classRecord.gradeId },
   });
 
   const term = termId

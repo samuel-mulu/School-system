@@ -2,8 +2,8 @@ import { prisma } from "../config/db.js";
 import { NotFoundError, BadRequestError, ConflictError } from "../utils/errors.js";
 
 interface CreateSubExamData {
+  gradeId: string;
   subjectId: string;
-  termId: string;
   name: string;
   maxScore: number;
   weightPercent: number;
@@ -18,7 +18,16 @@ interface UpdateSubExamData {
 }
 
 export const createSubExam = async (data: CreateSubExamData) => {
-  // Verify subject exists
+  // Verify grade exists
+  const grade = await prisma.grade.findUnique({
+    where: { id: data.gradeId },
+  });
+
+  if (!grade) {
+    throw new NotFoundError('Grade not found');
+  }
+
+  // Verify subject exists and belongs to grade
   const subject = await prisma.subject.findUnique({
     where: { id: data.subjectId },
   });
@@ -27,21 +36,16 @@ export const createSubExam = async (data: CreateSubExamData) => {
     throw new NotFoundError('Subject not found');
   }
 
-  // Verify term exists
-  const term = await prisma.term.findUnique({
-    where: { id: data.termId },
-  });
-
-  if (!term) {
-    throw new NotFoundError('Term not found');
+  if (subject.gradeId !== data.gradeId) {
+    throw new BadRequestError('Subject does not belong to this grade');
   }
 
-  // Check if sub-exam with same name already exists for this subject+term
+  // Check if sub-exam with same name already exists for this grade+subject
   const existing = await prisma.subExam.findUnique({
     where: {
-      subjectId_termId_name: {
+      gradeId_subjectId_name: {
+        gradeId: data.gradeId,
         subjectId: data.subjectId,
-        termId: data.termId,
         name: data.name,
       },
     },
@@ -49,14 +53,11 @@ export const createSubExam = async (data: CreateSubExamData) => {
 
   if (existing) {
     throw new ConflictError(
-      `Sub-exam "${data.name}" already exists for this subject and term`
+      `Sub-exam "${data.name}" already exists for this grade and subject`
     );
   }
 
-  // Validate weight percent
-  if (data.weightPercent < 0 || data.weightPercent > 100) {
-    throw new BadRequestError('Weight percent must be between 0 and 100');
-  }
+  // Weight validation removed - no restrictions on weight values
 
   // Validate max score
   if (data.maxScore <= 0) {
@@ -66,6 +67,12 @@ export const createSubExam = async (data: CreateSubExamData) => {
   const subExam = await prisma.subExam.create({
     data,
     include: {
+      grade: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       subject: {
         select: {
           id: true,
@@ -73,26 +80,28 @@ export const createSubExam = async (data: CreateSubExamData) => {
           code: true,
         },
       },
-      term: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
     },
   });
 
-  // Validate weights after creation
-  await validateWeights(data.subjectId, data.termId);
+  // Weight validation removed - no longer enforcing weight distribution
 
   return subExam;
 };
 
-export const getSubExamsBySubjectAndTerm = async (
-  subjectId: string,
-  termId: string
+export const getSubExamsBySubject = async (
+  gradeId: string,
+  subjectId: string
 ) => {
-  // Verify subject exists
+  // Verify grade exists
+  const grade = await prisma.grade.findUnique({
+    where: { id: gradeId },
+  });
+
+  if (!grade) {
+    throw new NotFoundError('Grade not found');
+  }
+
+  // Verify subject exists and belongs to grade
   const subject = await prisma.subject.findUnique({
     where: { id: subjectId },
   });
@@ -101,32 +110,27 @@ export const getSubExamsBySubjectAndTerm = async (
     throw new NotFoundError('Subject not found');
   }
 
-  // Verify term exists
-  const term = await prisma.term.findUnique({
-    where: { id: termId },
-  });
-
-  if (!term) {
-    throw new NotFoundError('Term not found');
+  if (subject.gradeId !== gradeId) {
+    throw new BadRequestError('Subject does not belong to this grade');
   }
 
   const subExams = await prisma.subExam.findMany({
     where: {
+      gradeId,
       subjectId,
-      termId,
     },
     include: {
+      grade: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       subject: {
         select: {
           id: true,
           name: true,
           code: true,
-        },
-      },
-      term: {
-        select: {
-          id: true,
-          name: true,
         },
       },
     },
@@ -155,12 +159,7 @@ export const updateSubExam = async (
     throw new NotFoundError('Sub-exam not found');
   }
 
-  // Validate weight percent if provided
-  if (data.weightPercent !== undefined) {
-    if (data.weightPercent < 0 || data.weightPercent > 100) {
-      throw new BadRequestError('Weight percent must be between 0 and 100');
-    }
-  }
+  // Weight validation removed - no restrictions on weight values
 
   // Validate max score if provided
   if (data.maxScore !== undefined) {
@@ -173,6 +172,12 @@ export const updateSubExam = async (
     where: { id },
     data,
     include: {
+      grade: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
       subject: {
         select: {
           id: true,
@@ -180,17 +185,10 @@ export const updateSubExam = async (
           code: true,
         },
       },
-      term: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
     },
   });
 
-  // Validate weights after update
-  await validateWeights(subExam.subjectId, subExam.termId);
+  // Weight validation removed - no longer enforcing weight distribution
 
   return updated;
 };
@@ -212,13 +210,13 @@ export const deleteSubExam = async (id: string) => {
 };
 
 export const validateWeights = async (
-  subjectId: string,
-  termId: string
+  gradeId: string,
+  subjectId: string
 ): Promise<{ isValid: boolean; subExamTotal: number; generalTestTotal: number; total: number }> => {
   const subExams = await prisma.subExam.findMany({
     where: {
+      gradeId,
       subjectId,
-      termId,
     },
   });
 
@@ -234,18 +232,12 @@ export const validateWeights = async (
   }
 
   const total = subExamTotal + generalTestTotal;
-  const isValid = Math.abs(subExamTotal - 60) < 0.01 && Math.abs(generalTestTotal - 40) < 0.01 && Math.abs(total - 100) < 0.01;
-
-  if (!isValid) {
-    throw new BadRequestError(
-      `Invalid weight distribution. Sub-exams should total 60% (currently ${subExamTotal.toFixed(2)}%), ` +
-      `General test should be 40% (currently ${generalTestTotal.toFixed(2)}%), ` +
-      `Total should be 100% (currently ${total.toFixed(2)}%)`
-    );
-  }
+  
+  // Weight validation removed - no longer enforcing any weight distribution rules
+  // Always return valid (no errors thrown)
 
   return {
-    isValid,
+    isValid: true,
     subExamTotal,
     generalTestTotal,
     total,

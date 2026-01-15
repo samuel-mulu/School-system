@@ -10,8 +10,8 @@ const router = Router();
 // Validation schemas
 const createSubExamSchema = z.object({
   body: z.object({
+    gradeId: z.string().uuid(),
     subjectId: z.string().uuid(),
-    termId: z.string().uuid(),
     name: z.string().min(1),
     maxScore: z.number().positive(),
     weightPercent: z.number().min(0).max(100),
@@ -38,9 +38,9 @@ router.post(
 );
 
 router.get(
-  '/subject/:subjectId/term/:termId',
+  '/grade/:gradeId/subject/:subjectId',
   authenticate,
-  subExamController.getSubExamsBySubjectAndTerm
+  subExamController.getSubExamsBySubject
 );
 
 router.patch(

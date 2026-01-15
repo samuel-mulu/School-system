@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import * as classService from "../services/class.service.js";
 import { sendSuccess } from "../utils/responses.js";
+import { prisma } from "../config/db.js";
 
 export const createClass = async (
   req: Request,
@@ -85,13 +86,44 @@ export const createSubject = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    let gradeId = req.params.gradeId;
+    
+    // If classId is provided instead of gradeId, get grade from class
+    if (!gradeId && req.params.classId) {
+      const classRecord = await prisma.class.findUnique({
+        where: { id: req.params.classId },
+        select: { gradeId: true },
+      });
+      if (!classRecord || !classRecord.gradeId) {
+        return res.status(400).json({ error: 'Class does not have a grade assigned' });
+      }
+      gradeId = classRecord.gradeId;
+    }
+    
+    if (!gradeId) {
+      return res.status(400).json({ error: 'gradeId or classId is required' });
+    }
+    
     const subject = await classService.createSubject(
-      req.params.classId,
+      gradeId,
       req.body,
       req.user?.userId,
       req.user?.role
     );
     sendSuccess(res, subject, 'Subject created successfully', 201);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getSubjectsByGrade = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const subjects = await classService.getSubjectsByGrade(req.params.gradeId);
+    sendSuccess(res, subjects);
   } catch (error) {
     next(error);
   }

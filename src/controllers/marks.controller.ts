@@ -102,10 +102,14 @@ export const recordMark = async (
 ): Promise<void> => {
   try {
     const { studentId, subExamId } = req.params;
-    const { score, notes } = req.body;
+    const { termId, score, notes } = req.body;
+    if (!termId) {
+      return res.status(400).json({ error: 'termId is required in request body' });
+    }
     const mark = await marksService.recordMark(
       studentId,
       subExamId,
+      termId,
       score,
       notes,
       req.user?.userId,
@@ -124,9 +128,13 @@ export const recordBulkMarks = async (
 ): Promise<void> => {
   try {
     const { subExamId } = req.params;
-    const { marksData } = req.body;
+    const { termId, marksData } = req.body;
+    if (!termId) {
+      return res.status(400).json({ error: 'termId is required in request body' });
+    }
     const results = await marksService.recordBulkMarks(
       subExamId,
+      termId,
       marksData,
       req.user?.userId,
       req.user?.role
