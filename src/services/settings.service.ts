@@ -71,3 +71,24 @@ export const getAllSettings = async () => {
   return settings;
 };
 
+// Helper functions for school information
+export const getSchoolName = async (): Promise<string> => {
+  const setting = await prisma.systemSettings.findUnique({
+    where: { key: 'schoolName' },
+  });
+  return setting?.value || 'School Name';
+};
+
+export const getSchoolContactNumber = async (): Promise<string> => {
+  const setting = await prisma.systemSettings.findUnique({
+    where: { key: 'schoolContactNumber' },
+  });
+  return setting?.value || '(000) 0000 000 000';
+};
+
+export const getSchoolLogoUrl = async (): Promise<string | null> => {
+  const setting = await prisma.systemSettings.findUnique({
+    where: { key: 'schoolLogoUrl' },
+  });
+  return setting?.value || null;
+};

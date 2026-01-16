@@ -2,6 +2,7 @@ import { ClassStatus, PaymentStatus } from "@prisma/client";
 import { prisma } from "../config/db.js";
 import { BadRequestError, ConflictError, NotFoundError } from "../utils/errors.js";
 import { deleteImageByUrl } from "../utils/cloudinary.js";
+import { getActiveAcademicYear } from "./academicYear.service.js";
 
 interface CreateStudentData {
   // Personal details
@@ -51,6 +52,66 @@ interface CreateStudentData {
 }
 
 interface UpdateStudentData extends Partial<CreateStudentData> {}
+
+/**
+ * Extract year code (last 2 digits) from academic year name
+ * Examples: "2024-2025" -> "24", "2025-2026" -> "25", "2025" -> "25"
+ */
+function extractYearCode(academicYearName: string): string {
+  const match = academicYearName.match(/^(\d{4})/);
+  if (match) {
+    const year = parseInt(match[1]);
+    return String(year % 100).padStart(2, '0');
+  }
+  const yearMatch = academicYearName.match(/\d{4}/);
+  if (yearMatch) {
+    const year = parseInt(yearMatch[0]);
+    return String(year % 100).padStart(2, '0');
+  }
+  const currentYear = new Date().getFullYear();
+  return String(currentYear % 100).padStart(2, '0');
+}
+
+/**
+ * Format student number as 5-digit string
+ */
+function formatStudentNumber(number: number): string {
+  return String(number).padStart(5, '0');
+}
+
+/**
+ * Generate next student number for a given academic year
+ */
+async function generateNextStudentNumber(academicYearName: string): Promise<number> {
+  const yearCode = extractYearCode(academicYearName);
+  const yearPrefix = parseInt(yearCode) * 1000; // e.g., 24 -> 24000
+  const minNumber = yearPrefix + 1; // e.g., 24001
+  const maxNumber = yearPrefix + 999; // e.g., 24999
+
+  // Find the maximum student number in this year's range
+  const maxStudent = await prisma.student.findFirst({
+    where: {
+      studentNumber: {
+        gte: minNumber,
+        lte: maxNumber,
+      },
+    },
+    orderBy: {
+      studentNumber: 'desc',
+    },
+  });
+
+  if (maxStudent && maxStudent.studentNumber) {
+    const nextNumber = maxStudent.studentNumber + 1;
+    if (nextNumber > maxNumber) {
+      throw new BadRequestError(`Maximum number of students (999) exceeded for academic year ${academicYearName}`);
+    }
+    return nextNumber;
+  }
+
+  // No students exist for this year, start at YY001
+  return minNumber;
+}
 
 export const createStudent = async (data: CreateStudentData) => {
   // Ensure dateOfBirth is a proper Date object

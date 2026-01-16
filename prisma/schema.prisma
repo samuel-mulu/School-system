@@ -76,6 +76,7 @@ model User {
 // Student model - central entity
 model Student {
   id        String        @id @default(uuid())
+  studentNumber Int?      @unique // 5-digit number: YYXXX (year + sequential)
   
   // Personal details
   firstName       String
@@ -134,6 +135,7 @@ model Student {
   @@index([classStatus])
   @@index([paymentStatus])
   @@index([firstName, lastName])
+  @@index([studentNumber])
 }
 
 // Grade model - ordered sequence for grade progression

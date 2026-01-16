@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 85.6mm;
+      height: 53.98mm;
+      font-family: Arial, Helvetica, sans-serif;
+      background: white;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    /* Background pattern */
+    body::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: 
+        repeating-linear-gradient(
+          45deg,
+          transparent,
+          transparent 2px,
+          rgba(200, 200, 255, 0.1) 2px,
+          rgba(200, 200, 255, 0.1) 4px
+        );
+      z-index: 0;
+    }
+    
+    /* Semi-transparent circular emblem */
+    body::after {
+      content: '';
+      position: absolute;
+      right: 5mm;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 30mm;
+      height: 30mm;
+      background: radial-gradient(circle, rgba(0, 0, 255, 0.1) 0%, transparent 70%);
+      border-radius: 50%;
+      z-index: 0;
+    }
+    
+    .container {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    /* Maroon Header */
+    .header {
+      background-color: #800020;
+      height: 18mm;
+      position: relative;
+      display: flex;
+      align-items: center;
+      padding: 0 3mm;
+    }
+    
+    .header::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 0.5mm;
+      border-top: 1px dashed white;
+    }
+    
+    .header-left {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    
+    .student-name {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 7pt;
+      font-weight: bold;
+      color: white;
+      line-height: 1.2;
+      text-transform: uppercase;
+    }
+    
+    .class-label {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 5pt;
+      font-weight: bold;
+      color: white;
+      margin-top: 0.5mm;
+      text-transform: uppercase;
+    }
+    
+    .header-divider {
+      width: 0.5mm;
+      height: 12mm;
+      background-color: white;
+      margin: 0 2mm;
+    }
+    
+    .header-right {
+      display: flex;
+      align-items: center;
+    }
+    
+    .student-id {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 7pt;
+      font-weight: bold;
+      color: white;
+    }
+    
+    /* Main Content */
+    .content {
+      flex: 1;
+      display: flex;
+      padding: 2mm 3mm;
+      gap: 2mm;
+      position: relative;
+    }
+    
+    .left-column {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5mm;
+      font-size: 5pt;
+      color: #333;
+    }
+    
+    .info-row {
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .info-label {
+      font-weight: bold;
+      margin-bottom: 0.3mm;
+    }
+    
+    .info-value {
+      color: #666;
+    }
+    
+    .right-column {
+      width: 22mm;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .student-photo {
+      width: 20mm;
+      height: 25mm;
+      object-fit: cover;
+      border: 1mm solid white;
+      box-shadow: 0 1mm 2mm rgba(0, 0, 0, 0.1);
+      background: #f0f0f0;
+    }
+    
+    .qr-section {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.8mm;
+      margin-top: 1mm;
+    }
+    
+    .qr-container {
+      width: 12mm;
+      height: 12mm;
+      border: 0.4mm solid #e0e0e0;
+      border-radius: 0.8mm;
+      background: white;
+      padding: 0.6mm;
+      box-shadow: 0 0.3mm 0.6mm rgba(0, 0, 0, 0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .qr-code {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    
+    .qr-label {
+      font-size: 4pt;
+      color: #666;
+      font-family: 'Courier New', monospace;
+      text-align: left;
+      line-height: 1.2;
+    }
+    
+    /* Footer */
+    .footer {
+      height: 12mm;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 3mm;
+      border-top: 0.5mm solid #e0e0e0;
+    }
+    
+    .footer-left {
+      display: flex;
+      align-items: center;
+      gap: 2mm;
+    }
+    
+    .school-logo {
+      width: 8mm;
+      height: 8mm;
+      object-fit: contain;
+    }
+    
+    .school-name {
+      font-size: 6pt;
+      font-weight: bold;
+      color: #800020;
+    }
+    
+    .footer-right {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Maroon Header -->
+    <div class="header">
+      <div class="header-left">
+        <div class="student-name">{{STUDENT_FULL_NAME}}</div>
+        <div class="class-label">CLASS</div>
+      </div>
+      <div class="header-divider"></div>
+      <div class="header-right">
+        <div class="student-id">ID: {{STUDENT_ID}}</div>
+      </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="content">
+      <div class="left-column">
+        <div class="info-row">
+          <div class="info-label">Birthdate:</div>
+          <div class="info-value">{{BIRTHDATE}}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">acadamicyear:</div>
+          <div class="info-value">{{ACADEMIC_YEAR}}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">emergencyphone</div>
+          <div class="info-value">{{EMERGENCY_PHONE}}</div>
+        </div>
+        <div class="qr-section">
+          <div class="qr-container">
+            <img src="{{QR_CODE_DATA_URL}}" alt="QR Code" class="qr-code" />
+          </div>
+          <div class="qr-label">ID: {{STUDENT_ID}}</div>
+        </div>
+      </div>
+      
+      <div class="right-column">
+        <img src="{{STUDENT_PHOTO_URL}}" alt="Student Photo" class="student-photo" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22%3E%3Crect fill=%22%23ddd%22 width=%22100%22 height=%22100%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23999%22 font-family=%22Arial%22 font-size=%2214%22%3ENo Photo%3C/text%3E%3C/svg%3E';" />
+      </div>
+    </div>
+    
+    <!-- Footer -->
+    <div class="footer">
+      <div class="footer-left">
+        <img src="{{SCHOOL_LOGO_URL}}" alt="School Logo" class="school-logo" onerror="this.style.display='none';" />
+        <div class="school-name">{{SCHOOL_NAME}}</div>
+      </div>
+      <div class="footer-right">
+        <!-- QR code moved to right column with photo -->
+      </div>
+    </div>
+  </div>
+</body>
+</html>
