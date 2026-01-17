@@ -22,6 +22,7 @@ import subExamRoutes from "./routes/subexams.js";
 import termRoutes from "./routes/terms.js";
 import userRoutes from "./routes/users.js";
 import badgeRoutes from "./routes/badge.js";
+import uploadRoutes from "./routes/upload.js";
 
 const app = express();
 
@@ -84,6 +85,7 @@ app.use("/api/academic-years", academicYearRoutes);
 app.use("/api/promotion", promotionRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/badge", badgeRoutes);
+app.use("/api/Fileupload", uploadRoutes);
 
 /**
  * =========================
