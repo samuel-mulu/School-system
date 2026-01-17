@@ -34,7 +34,7 @@ const app = express();
 app.use(
   cors({
     origin: [
-      "http://localhost:3001",
+      "http://localhost:3000",
       "https://students-nine-tau.vercel.app",
     ],
     credentials: true,
