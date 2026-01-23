@@ -8,6 +8,20 @@ import { uploadSingle } from "../middleware/upload.js";
 
 const router = Router();
 
+// Treat empty strings / null as "not provided" for optional URL fields.
+const optionalUrl = () =>
+  z.preprocess(
+    (v) => {
+      if (v === '' || v === null) return undefined;
+      if (typeof v === 'string') {
+        const trimmed = v.trim();
+        return trimmed === '' ? undefined : trimmed;
+      }
+      return v;
+    },
+    z.string().url().optional()
+  );
+
 // Validation schemas
 const createPaymentSchema = z.object({
   body: z.object({
@@ -17,7 +31,7 @@ const createPaymentSchema = z.object({
     year: z.number().int().min(2000).max(3000),
     paymentMethod: z.string().optional(),
     notes: z.string().optional(),
-    proofImageUrl: z.string().url().optional(),
+    proofImageUrl: optionalUrl(),
     transactionNumber: z.string().optional(),
     amount: z.number().positive().optional(), // Optional for backward compatibility, but will be fetched from PaymentType
   }),
@@ -30,7 +44,7 @@ const createBulkPaymentSchema = z.object({
     months: z.array(z.string().regex(/^\d{4}-\d{2}$/, 'Month must be in YYYY-MM format')).min(1, 'At least one month must be provided'),
     paymentMethod: z.string().optional(),
     notes: z.string().optional(),
-    proofImageUrl: z.string().url().optional(),
+    proofImageUrl: optionalUrl(),
     transactionNumber: z.string().optional(),
   }),
 });
@@ -39,7 +53,7 @@ const confirmPaymentSchema = z.object({
   body: z.object({
     paymentDate: z.coerce.date().optional(),
     paymentMethod: z.string().optional(),
-    proofImageUrl: z.string().url().optional(),
+    proofImageUrl: optionalUrl(),
     transactionNumber: z.string().optional(),
   }),
 });
@@ -49,7 +63,7 @@ const confirmBulkPaymentsSchema = z.object({
     paymentIds: z.array(z.string().uuid()).min(1, 'At least one payment ID is required'),
     paymentDate: z.coerce.date().optional(),
     paymentMethod: z.string().optional(),
-    proofImageUrl: z.string().url().optional(),
+    proofImageUrl: optionalUrl(),
     transactionNumber: z.string().optional(),
   }),
 });
