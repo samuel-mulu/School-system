@@ -20,3 +20,21 @@ export const getRosterResults = async (
     next(error);
   }
 };
+
+export const getRosterResultsSemesters = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { classId } = req.params;
+    const result = await rosterService.getRosterResultsSemesters(
+      classId,
+      req.user?.userId,
+      req.user?.role
+    );
+    sendSuccess(res, result);
+  } catch (error) {
+    next(error);
+  }
+};
