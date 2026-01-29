@@ -1,8 +1,7 @@
 import { ClassStatus, PaymentStatus } from "@prisma/client";
 import { prisma } from "../config/db.js";
-import { BadRequestError, ConflictError, NotFoundError } from "../utils/errors.js";
 import { deleteImageByUrl } from "../utils/cloudinary.js";
-import { getActiveAcademicYear } from "./academicYear.service.js";
+import { BadRequestError, ConflictError, NotFoundError } from "../utils/errors.js";
 
 interface CreateStudentData {
   // Personal details
@@ -203,8 +202,11 @@ export const getStudents = async (filters?: {
   paymentStatus?: PaymentStatus;
   search?: string;
   classId?: string;
+  gradeId?: string;
   page?: number;
   limit?: number;
+  month?: string;
+  year?: number;
   userId?: string;
   userRole?: string;
 }) => {
@@ -249,7 +251,36 @@ export const getStudents = async (filters?: {
   }
 
   if (filters?.paymentStatus) {
-    where.paymentStatus = filters.paymentStatus;
+    if (filters.month) {
+      // If month is provided, filter students by their payment status for that specific month
+      const year = filters.year || new Date().getFullYear();
+      
+      if (filters.paymentStatus === PaymentStatus.confirmed) {
+        // Find students who HAVE a confirmed payment for this month
+        where.payments = {
+          some: {
+            month: filters.month,
+            year: year,
+            status: PaymentStatus.confirmed,
+          },
+        };
+      } else {
+        // Find students who DO NOT have a confirmed payment for this month
+        // This includes those with pending payments OR no payment record at all for this month
+        where.NOT = {
+          payments: {
+            some: {
+              month: filters.month,
+              year: year,
+              status: PaymentStatus.confirmed,
+            },
+          },
+        };
+      }
+    } else {
+      // Fallback to global paymentStatus if no month is provided
+      where.paymentStatus = filters.paymentStatus;
+    }
   }
 
   if (filters?.search) {
@@ -259,6 +290,18 @@ export const getStudents = async (filters?: {
       { email: { contains: filters.search, mode: 'insensitive' } },
       { phone: { contains: filters.search, mode: 'insensitive' } },
     ];
+  }
+
+  // Filter by gradeId through classHistory -> class relationship
+  if (filters?.gradeId) {
+    where.classHistory = {
+      some: {
+        class: {
+          gradeId: filters.gradeId,
+        },
+        endDate: null, // Only active class assignments
+      },
+    };
   }
 
   // Filter by classId through StudentClass relationship

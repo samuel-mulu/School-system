@@ -1,8 +1,8 @@
-import type { Request, Response, NextFunction } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import * as studentService from "../services/student.service.js";
-import { sendSuccess } from "../utils/responses.js";
 import { uploadToCloudinary } from "../utils/cloudinary.js";
 import { BadRequestError } from "../utils/errors.js";
+import { sendSuccess } from "../utils/responses.js";
 
 export const createStudent = async (
   req: Request,
@@ -28,8 +28,11 @@ export const getStudents = async (
       paymentStatus: req.query.paymentStatus as any,
       search: req.query.search as string,
       classId: req.query.classId as string,
+      gradeId: req.query.gradeId as string,
       page: req.query.page ? parseInt(req.query.page as string) : undefined,
       limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
+      month: req.query.month as string,
+      year: req.query.year ? parseInt(req.query.year as string) : undefined,
       userId: req.user?.userId,
       userRole: req.user?.role,
     };
