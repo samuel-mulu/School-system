@@ -36,7 +36,7 @@ app.use(
     origin: [
       "http://localhost:3000",
       "https://students-nine-tau.vercel.app",
-      'http://192.168.1.2:3000'
+      "http://192.168.1.3:3000",
     ],
     credentials: true,
   })
