@@ -342,7 +342,7 @@ export const getStudents = async (filters?: {
       skip,
       take: limit,
       orderBy: {
-        createdAt: 'desc',
+        firstName: 'asc',
       },
     }),
     prisma.student.count({ where }),
