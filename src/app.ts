@@ -8,11 +8,12 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import academicYearRoutes from "./routes/academicYears.js";
 import attendanceRoutes from "./routes/attendance.js";
 import authRoutes from "./routes/auth.js";
+import badgeRoutes from "./routes/badge.js";
 import classRoutes from "./routes/classes.js";
 import gradeRoutes from "./routes/grades.js";
 import marksRoutes from "./routes/marks.js";
-import paymentRoutes from "./routes/payments.js";
 import paymentTypeRoutes from "./routes/payment-types.js";
+import paymentRoutes from "./routes/payments.js";
 import promotionRoutes from "./routes/promotion.js";
 import reportRoutes from "./routes/reports.js";
 import resultsRoutes from "./routes/results.js";
@@ -20,9 +21,8 @@ import settingsRoutes from "./routes/settings.js";
 import studentRoutes from "./routes/students.js";
 import subExamRoutes from "./routes/subexams.js";
 import termRoutes from "./routes/terms.js";
-import userRoutes from "./routes/users.js";
-import badgeRoutes from "./routes/badge.js";
 import uploadRoutes from "./routes/upload.js";
+import userRoutes from "./routes/users.js";
 
 const app = express();
 
@@ -36,6 +36,7 @@ app.use(
     origin: [
       "http://localhost:3000",
       "https://students-nine-tau.vercel.app",
+      'http://192.168.1.2:3000'
     ],
     credentials: true,
   })
