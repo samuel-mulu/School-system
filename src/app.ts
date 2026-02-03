@@ -31,16 +31,10 @@ const app = express();
  * CORS (FIXED & SIMPLE)
  * =========================
  */
-app.use(
-  cors({
-    origin: [
-      "http://localhost:3000",
-      "https://students-nine-tau.vercel.app",
-      "http://192.168.1.3:3000",
-    ],
-    credentials: true,
-  })
-);
+app.use(cors({
+  origin: "*",
+}));
+
 
 /**
  * =========================
