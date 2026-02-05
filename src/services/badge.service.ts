@@ -1,10 +1,10 @@
-import { prisma } from '../config/db.js';
-import { NotFoundError } from '../utils/errors.js';
-import { chromium } from 'playwright';
-import QRCode from 'qrcode';
-import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { readFileSync } from "fs";
+import { dirname, join } from "path";
+import { chromium } from "playwright";
+import QRCode from "qrcode";
+import { fileURLToPath } from "url";
+import { prisma } from "../config/db.js";
+import { NotFoundError } from "../utils/errors.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -32,7 +32,9 @@ export interface BadgeData {
   };
 }
 
-export const getStudentBadgeData = async (studentId: string): Promise<BadgeData> => {
+export const getStudentBadgeData = async (
+  studentId: string,
+): Promise<BadgeData> => {
   const student = await prisma.student.findUnique({
     where: { id: studentId },
     include: {
@@ -51,7 +53,7 @@ export const getStudentBadgeData = async (studentId: string): Promise<BadgeData>
   });
 
   if (!student) {
-    throw new NotFoundError('Student not found');
+    throw new NotFoundError("Student not found");
   }
 
   // Get current class and academic year
@@ -60,22 +62,21 @@ export const getStudentBadgeData = async (studentId: string): Promise<BadgeData>
   const academicYear = currentClass?.academicYear || null;
 
   // Get school settings
-  const [schoolNameSetting, contactNumberSetting, logoUrlSetting] = await Promise.all([
-    prisma.systemSettings.findUnique({ where: { key: 'schoolName' } }),
-    prisma.systemSettings.findUnique({ where: { key: 'schoolContactNumber' } }),
-    prisma.systemSettings.findUnique({ where: { key: 'schoolLogoUrl' } }),
-  ]);
+  const [schoolNameSetting, contactNumberSetting, logoUrlSetting] =
+    await Promise.all([
+      prisma.systemSettings.findUnique({ where: { key: "schoolName" } }),
+      prisma.systemSettings.findUnique({
+        where: { key: "schoolContactNumber" },
+      }),
+      prisma.systemSettings.findUnique({ where: { key: "schoolLogoUrl" } }),
+    ]);
 
   const school = {
-    name: schoolNameSetting?.value || 'School Name',
-    contactNumber: contactNumberSetting?.value || '(000) 0000 000 000',
+    name: schoolNameSetting?.value || "School Name",
+    contactNumber: contactNumberSetting?.value || "(000) 0000 000 000",
     logoUrl: logoUrlSetting?.value || null,
   };
 
-  // Format student number as 5-digit string, fallback to UUID if not available
-  const formattedStudentNumber = student.studentNumber 
-    ? String(student.studentNumber).padStart(5, '0')
-    : student.id;
 
   return {
     student: {
@@ -100,72 +101,73 @@ export const generateQRCode = async (text: string): Promise<string> => {
       width: 200,
       margin: 1,
       color: {
-        dark: '#000000',
-        light: '#FFFFFF',
+        dark: "#000000",
+        light: "#FFFFFF",
       },
     });
     return dataUrl;
   } catch (error) {
-    console.error('QR code generation error:', error);
+    console.error("QR code generation error:", error);
     // Return empty string on error
-    return '';
+    return "";
   }
 };
 
 export const renderBadgeHTML = (
-  side: 'front' | 'back',
+  side: "front" | "back",
   data: BadgeData,
-  qrCodeDataUrl: string
+  qrCodeDataUrl: string,
 ): string => {
   // Try multiple paths to find templates (works in both dev and production)
   let templatePath: string;
   const possiblePaths = [
-    join(__dirname, '..', 'templates', `badge-${side}.html`), // Production (dist)
-    join(__dirname, '..', '..', 'src', 'templates', `badge-${side}.html`), // Development
+    join(__dirname, "..", "templates", `badge-${side}.html`), // Production (dist)
+    join(__dirname, "..", "..", "src", "templates", `badge-${side}.html`), // Development
   ];
-  
+
   for (const path of possiblePaths) {
     try {
-      readFileSync(path, 'utf-8');
+      readFileSync(path, "utf-8");
       templatePath = path;
       break;
     } catch {
       // Try next path
     }
   }
-  
+
   if (!templatePath!) {
     throw new Error(`Template file not found: badge-${side}.html`);
   }
-  
-  let html = readFileSync(templatePath, 'utf-8');
+
+  let html = readFileSync(templatePath, "utf-8");
 
   // Format date of birth
   const dob = new Date(data.student.dateOfBirth);
-  const formattedDob = `${String(dob.getMonth() + 1).padStart(2, '0')}/${String(dob.getDate()).padStart(2, '0')}/${dob.getFullYear()}`;
+  const formattedDob = `${String(dob.getMonth() + 1).padStart(2, "0")}/${String(dob.getDate()).padStart(2, "0")}/${dob.getFullYear()}`;
 
   // Format student number for display (5 digits) or fallback to UUID
-  const displayStudentId = data.student.studentNumber 
-    ? String(data.student.studentNumber).padStart(5, '0')
+  const displayStudentId = data.student.studentNumber
+    ? String(data.student.studentNumber).padStart(5, "0")
     : data.student.id;
 
   // Replace placeholders
   const replacements: Record<string, string> = {
-    '{{STUDENT_FULL_NAME}}': `${data.student.firstName} ${data.student.lastName}`,
-    '{{STUDENT_ID}}': displayStudentId,
-    '{{CLASS_NAME}}': data.class?.name || 'N/A',
-    '{{BIRTHDATE}}': formattedDob,
-    '{{ACADEMIC_YEAR}}': data.academicYear?.name || 'N/A',
-    '{{EMERGENCY_PHONE}}': data.student.emergencyPhone || 'N/A',
-    '{{STUDENT_PHOTO_URL}}': data.student.profileImageUrl || '/placeholder-student.png',
-    '{{SCHOOL_NAME}}': data.school.name,
-    '{{SCHOOL_CONTACT}}': data.school.contactNumber,
-    '{{SCHOOL_LOGO_URL}}': data.school.logoUrl || '/logo.png',
-    '{{QR_CODE_DATA_URL}}': qrCodeDataUrl,
+    "{{STUDENT_FULL_NAME}}": `${data.student.firstName} ${data.student.lastName}`,
+    "{{STUDENT_ID}}": displayStudentId,
+    "{{CLASS_NAME}}": data.class?.name || "N/A",
+    "{{BIRTHDATE}}": formattedDob,
+    "{{ACADEMIC_YEAR}}": data.academicYear?.name || "N/A",
+    "{{EMERGENCY_PHONE}}": data.student.emergencyPhone || "N/A",
+    "{{STUDENT_PHOTO_URL}}":
+      data.student.profileImageUrl || `http://localhost:${process.env.PORT || 4000}/placeholder-student.png`,
+    "{{SCHOOL_NAME}}": data.school.name,
+    "{{SCHOOL_CONTACT}}": data.school.contactNumber,
+    "{{SCHOOL_LOGO_URL}}": data.school.logoUrl || `http://localhost:${process.env.PORT || 4000}/logo.jpg`,
+    "{{QR_CODE_DATA_URL}}": qrCodeDataUrl,
   };
 
   Object.entries(replacements).forEach(([key, value]) => {
-    html = html.replace(new RegExp(key, 'g'), value);
+    html = html.replace(new RegExp(key, "g"), value);
   });
 
   return html;
@@ -173,27 +175,26 @@ export const renderBadgeHTML = (
 
 export const generateBadgePDF = async (
   html: string,
-  side: 'front' | 'back'
 ): Promise<Buffer> => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
 
   try {
-    await page.setContent(html, { waitUntil: 'networkidle' });
-    
+    await page.setContent(html, { waitUntil: "networkidle" });
+
     // CR80 size: 85.60mm x 53.98mm
     // At 300 DPI: 1011px x 638px (approximately)
     await page.setViewportSize({ width: 1011, height: 638 });
 
     const pdf = await page.pdf({
-      width: '85.6mm',
-      height: '53.98mm',
+      width: "85.6mm",
+      height: "53.98mm",
       printBackground: true,
       margin: {
-        top: '0mm',
-        right: '0mm',
-        bottom: '0mm',
-        left: '0mm',
+        top: "0mm",
+        right: "0mm",
+        bottom: "0mm",
+        left: "0mm",
       },
     });
 
@@ -205,19 +206,18 @@ export const generateBadgePDF = async (
 
 export const generateBadgePNG = async (
   html: string,
-  side: 'front' | 'back'
 ): Promise<Buffer> => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
 
   try {
-    await page.setContent(html, { waitUntil: 'networkidle' });
-    
+    await page.setContent(html, { waitUntil: "networkidle" });
+
     // CR80 size at 300 DPI
     await page.setViewportSize({ width: 1011, height: 638 });
 
     const screenshot = await page.screenshot({
-      type: 'png',
+      type: "png",
       fullPage: false,
     });
 
@@ -229,7 +229,7 @@ export const generateBadgePNG = async (
 
 export const generateCombinedPDF = async (
   frontHtml: string,
-  backHtml: string
+  backHtml: string,
 ): Promise<Buffer> => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
@@ -262,18 +262,18 @@ export const generateCombinedPDF = async (
       </html>
     `;
 
-    await page.setContent(combinedHtml, { waitUntil: 'networkidle' });
+    await page.setContent(combinedHtml, { waitUntil: "networkidle" });
     await page.setViewportSize({ width: 1011, height: 638 });
 
     const pdf = await page.pdf({
-      width: '85.6mm',
-      height: '53.98mm',
+      width: "85.6mm",
+      height: "53.98mm",
       printBackground: true,
       margin: {
-        top: '0mm',
-        right: '0mm',
-        bottom: '0mm',
-        left: '0mm',
+        top: "0mm",
+        right: "0mm",
+        bottom: "0mm",
+        left: "0mm",
       },
     });
 

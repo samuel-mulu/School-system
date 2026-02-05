@@ -1,14 +1,15 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
+
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <style>
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
-    
+
     body {
       width: 85.6mm;
       height: 53.98mm;
@@ -17,14 +18,14 @@
       display: flex;
       flex-direction: column;
     }
-    
+
     /* Grey Top Band */
     .top-band {
       background-color: #808080;
       height: 12mm;
       width: 100%;
     }
-    
+
     /* Center Content */
     .center-content {
       flex: 1;
@@ -35,25 +36,31 @@
       gap: 3mm;
       padding: 5mm;
     }
-    
+
     .logo-container {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      gap: 3mm;
+      justify-content: center;
+      gap: 2mm;
+      text-align: center;
     }
-    
+
     .school-logo {
-      width: 12mm;
-      height: 12mm;
+      width: 16mm;
+      height: 16mm;
       object-fit: contain;
+      margin-bottom: 1mm;
     }
-    
+
     .school-name {
-      font-size: 8pt;
+      font-size: 10pt;
       font-weight: bold;
       color: #333;
+      text-transform: uppercase;
+      letter-spacing: 0.5mm;
     }
-    
+
     /* Bottom Contact */
     .bottom-contact {
       height: 10mm;
@@ -63,36 +70,50 @@
       padding: 0 3mm;
       border-top: 0.5mm solid #e0e0e0;
     }
-    
+
     .contact-text {
       font-size: 6pt;
       color: #666;
+      margin-bottom: 0.5mm;
     }
-    
+
+    .contact-numbers {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.3mm;
+    }
+
     .contact-number {
-      font-size: 7pt;
+      font-size: 6pt;
       font-weight: bold;
       color: #333;
-      margin-left: 1mm;
     }
   </style>
 </head>
+
 <body>
   <!-- Grey Top Band -->
   <div class="top-band"></div>
-  
+
   <!-- Center Content -->
   <div class="center-content">
     <div class="logo-container">
-      <img src="{{SCHOOL_LOGO_URL}}" alt="School Logo" class="school-logo" onerror="this.style.display='none';" />
-      <div class="school-name">{{SCHOOL_NAME}}</div>
+      <img src="{{SCHOOL_LOGO_URL}}" alt="School Logo" class="school-logo" onerror="this.src = '/logo.jpg'" />
+      <div class="school-name">DIGITAL KG</div>
     </div>
   </div>
-  
+
   <!-- Bottom Contact -->
   <div class="bottom-contact">
-    <span class="contact-text">Contact number:</span>
-    <span class="contact-number">{{SCHOOL_CONTACT}}</span>
+    <div style="display: flex; flex-direction: column; align-items: center">
+      <span class="contact-text">Contact Numbers:</span>
+      <div class="contact-numbers">
+        <span class="contact-number">0992023823</span>
+        <span class="contact-number">0914151769</span>
+      </div>
+    </div>
   </div>
 </body>
+
 </html>

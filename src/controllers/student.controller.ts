@@ -1,4 +1,4 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { NextFunction, Request, Response } from "express";
 import * as studentService from "../services/student.service.js";
 import { uploadToCloudinary } from "../utils/cloudinary.js";
 import { BadRequestError } from "../utils/errors.js";
@@ -7,11 +7,11 @@ import { sendSuccess } from "../utils/responses.js";
 export const createStudent = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const student = await studentService.createStudent(req.body);
-    sendSuccess(res, student, 'Student registered successfully', 201);
+    sendSuccess(res, student, "Student registered successfully", 201);
   } catch (error) {
     next(error);
   }
@@ -20,7 +20,7 @@ export const createStudent = async (
 export const getStudents = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const filters = {
@@ -46,13 +46,13 @@ export const getStudents = async (
 export const getStudentById = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const student = await studentService.getStudentById(
       req.params.id,
       req.user?.userId,
-      req.user?.role
+      req.user?.role,
     );
     sendSuccess(res, student);
   } catch (error) {
@@ -63,11 +63,11 @@ export const getStudentById = async (
 export const updateStudent = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const student = await studentService.updateStudent(req.params.id, req.body);
-    sendSuccess(res, student, 'Student updated successfully');
+    sendSuccess(res, student, "Student updated successfully");
   } catch (error) {
     next(error);
   }
@@ -76,16 +76,16 @@ export const updateStudent = async (
 export const assignStudentToClass = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { classId, reason } = req.body;
     const student = await studentService.assignStudentToClass(
       req.params.id,
       classId,
-      reason
+      reason,
     );
-    sendSuccess(res, student, 'Student assigned to class successfully');
+    sendSuccess(res, student, "Student assigned to class successfully");
   } catch (error) {
     next(error);
   }
@@ -94,16 +94,16 @@ export const assignStudentToClass = async (
 export const transferStudent = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { newClassId, reason } = req.body;
     const student = await studentService.transferStudent(
       req.params.id,
       newClassId,
-      reason
+      reason,
     );
-    sendSuccess(res, student, 'Student transferred successfully');
+    sendSuccess(res, student, "Student transferred successfully");
   } catch (error) {
     next(error);
   }
@@ -112,11 +112,28 @@ export const transferStudent = async (
 export const deleteStudent = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const result = await studentService.deleteStudent(req.params.id);
-    sendSuccess(res, result, 'Student deleted successfully');
+    sendSuccess(res, result, "Student deleted successfully");
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const toggleParentsPortal = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { parentsPortal } = req.body;
+    const student = await studentService.updateParentsPortal(
+      req.params.id,
+      parentsPortal,
+    );
+    sendSuccess(res, student, "Parents portal access updated successfully");
   } catch (error) {
     next(error);
   }
@@ -125,36 +142,39 @@ export const deleteStudent = async (
 export const uploadStudentImage = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const file = req.file;
-    
+
     if (!file) {
-      throw new BadRequestError('No image file provided');
+      throw new BadRequestError("No image file provided");
     }
 
     // Validate file type
-    if (!file.mimetype.startsWith('image/')) {
-      throw new BadRequestError('File must be an image');
+    if (!file.mimetype.startsWith("image/")) {
+      throw new BadRequestError("File must be an image");
     }
 
     // Validate file size (5MB max)
     if (file.size > 5 * 1024 * 1024) {
-      throw new BadRequestError('Image size must be less than 5MB');
+      throw new BadRequestError("Image size must be less than 5MB");
     }
 
     // Upload to Cloudinary
     const result = await uploadToCloudinary(file.buffer, {
-      folder: 'students/profiles',
+      folder: "students/profiles",
     });
 
-    sendSuccess(res, {
-      imageUrl: result.secure_url,
-      publicId: result.public_id,
-    }, 'Image uploaded successfully');
+    sendSuccess(
+      res,
+      {
+        imageUrl: result.secure_url,
+        publicId: result.public_id,
+      },
+      "Image uploaded successfully",
+    );
   } catch (error) {
     next(error);
   }
 };
-

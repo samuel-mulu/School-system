@@ -1,7 +1,11 @@
 import { ClassStatus, PaymentStatus } from "@prisma/client";
 import { prisma } from "../config/db.js";
 import { deleteImageByUrl } from "../utils/cloudinary.js";
-import { BadRequestError, ConflictError, NotFoundError } from "../utils/errors.js";
+import {
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+} from "../utils/errors.js";
 
 interface CreateStudentData {
   // Personal details
@@ -13,41 +17,44 @@ interface CreateStudentData {
   religion?: string;
   email?: string;
   phone?: string;
-  
+
   // Parent info
   parentName: string;
   parentPhone: string;
   parentEmail?: string;
   parentRelation: string;
-  
+
   // Address
   address: string;
   city: string;
   state?: string;
   zipCode?: string;
   country?: string;
-  
+
   // Emergency contact
   emergencyName: string;
   emergencyPhone: string;
   emergencyRelation: string;
-  
+
   // Medical info
   medicalConditions?: string;
   allergies?: string;
   bloodGroup?: string;
-  
+
   // Previous school history
   previousSchool?: string;
   previousClass?: string;
   transferReason?: string;
-  
+
   // Optional class assignment during creation
   classId?: string;
   assignClassReason?: string;
-  
+
   // Profile image
   profileImageUrl?: string;
+
+  // Parents portal access
+  parentsPortal?: boolean;
 }
 
 interface UpdateStudentData extends Partial<CreateStudentData> {}
@@ -60,28 +67,30 @@ function extractYearCode(academicYearName: string): string {
   const match = academicYearName.match(/^(\d{4})/);
   if (match) {
     const year = parseInt(match[1]);
-    return String(year % 100).padStart(2, '0');
+    return String(year % 100).padStart(2, "0");
   }
   const yearMatch = academicYearName.match(/\d{4}/);
   if (yearMatch) {
     const year = parseInt(yearMatch[0]);
-    return String(year % 100).padStart(2, '0');
+    return String(year % 100).padStart(2, "0");
   }
   const currentYear = new Date().getFullYear();
-  return String(currentYear % 100).padStart(2, '0');
+  return String(currentYear % 100).padStart(2, "0");
 }
 
 /**
  * Format student number as 5-digit string
  */
 function formatStudentNumber(number: number): string {
-  return String(number).padStart(5, '0');
+  return String(number).padStart(5, "0");
 }
 
 /**
  * Generate next student number for a given academic year
  */
-async function generateNextStudentNumber(academicYearName: string): Promise<number> {
+async function generateNextStudentNumber(
+  academicYearName: string,
+): Promise<number> {
   const yearCode = extractYearCode(academicYearName);
   const yearPrefix = parseInt(yearCode) * 1000; // e.g., 24 -> 24000
   const minNumber = yearPrefix + 1; // e.g., 24001
@@ -96,14 +105,16 @@ async function generateNextStudentNumber(academicYearName: string): Promise<numb
       },
     },
     orderBy: {
-      studentNumber: 'desc',
+      studentNumber: "desc",
     },
   });
 
   if (maxStudent && maxStudent.studentNumber) {
     const nextNumber = maxStudent.studentNumber + 1;
     if (nextNumber > maxNumber) {
-      throw new BadRequestError(`Maximum number of students (999) exceeded for academic year ${academicYearName}`);
+      throw new BadRequestError(
+        `Maximum number of students (999) exceeded for academic year ${academicYearName}`,
+      );
     }
     return nextNumber;
   }
@@ -118,20 +129,20 @@ export const createStudent = async (data: CreateStudentData) => {
   let dateOfBirth: Date;
   if (data.dateOfBirth instanceof Date) {
     dateOfBirth = data.dateOfBirth;
-  } else if (typeof data.dateOfBirth === 'string') {
+  } else if (typeof data.dateOfBirth === "string") {
     // If it's a date string like "2026-01-01", ensure it's converted properly
     // Add time component if missing to make it a valid ISO-8601 DateTime
-    const dateStr = data.dateOfBirth.includes('T') 
-      ? data.dateOfBirth 
+    const dateStr = data.dateOfBirth.includes("T")
+      ? data.dateOfBirth
       : `${data.dateOfBirth}T00:00:00.000Z`;
     dateOfBirth = new Date(dateStr);
   } else {
     dateOfBirth = new Date(data.dateOfBirth);
   }
-  
+
   // Validate the date
   if (isNaN(dateOfBirth.getTime())) {
-    throw new BadRequestError('Invalid date format for dateOfBirth');
+    throw new BadRequestError("Invalid date format for dateOfBirth");
   }
 
   // Remove classId and assignClassReason from student data (they're not student fields)
@@ -144,7 +155,7 @@ export const createStudent = async (data: CreateStudentData) => {
     });
 
     if (!classExists) {
-      throw new NotFoundError('Class not found');
+      throw new NotFoundError("Class not found");
     }
   }
 
@@ -154,6 +165,7 @@ export const createStudent = async (data: CreateStudentData) => {
       dateOfBirth,
       classStatus: classId ? ClassStatus.assigned : ClassStatus.new,
       paymentStatus: PaymentStatus.pending,
+      parentsPortal: studentData.parentsPortal ?? true, // Default to true if not provided
     },
     include: {
       classHistory: {
@@ -161,7 +173,7 @@ export const createStudent = async (data: CreateStudentData) => {
           class: true,
         },
         orderBy: {
-          startDate: 'desc',
+          startDate: "desc",
         },
       },
     },
@@ -173,7 +185,7 @@ export const createStudent = async (data: CreateStudentData) => {
       data: {
         studentId: student.id,
         classId,
-        reason: assignClassReason || 'initial assignment',
+        reason: assignClassReason || "initial assignment",
         startDate: new Date(),
       },
     });
@@ -187,7 +199,7 @@ export const createStudent = async (data: CreateStudentData) => {
             class: true,
           },
           orderBy: {
-            startDate: 'desc',
+            startDate: "desc",
           },
         },
       },
@@ -217,13 +229,13 @@ export const getStudents = async (filters?: {
   const where: any = {};
 
   // If user is a TEACHER, only show students from their assigned classes
-  if (filters?.userRole === 'TEACHER' && filters?.userId) {
+  if (filters?.userRole === "TEACHER" && filters?.userId) {
     const teacherClasses = await prisma.class.findMany({
       where: { headTeacherId: filters.userId },
       select: { id: true },
     });
     const classIds = teacherClasses.map((c: { id: string }) => c.id);
-    
+
     if (classIds.length === 0) {
       // Teacher has no assigned classes, return empty result
       return {
@@ -254,7 +266,7 @@ export const getStudents = async (filters?: {
     if (filters.month) {
       // If month is provided, filter students by their payment status for that specific month
       const year = filters.year || new Date().getFullYear();
-      
+
       if (filters.paymentStatus === PaymentStatus.confirmed) {
         // Find students who HAVE a confirmed payment for this month
         where.payments = {
@@ -285,10 +297,10 @@ export const getStudents = async (filters?: {
 
   if (filters?.search) {
     where.OR = [
-      { firstName: { contains: filters.search, mode: 'insensitive' } },
-      { lastName: { contains: filters.search, mode: 'insensitive' } },
-      { email: { contains: filters.search, mode: 'insensitive' } },
-      { phone: { contains: filters.search, mode: 'insensitive' } },
+      { firstName: { contains: filters.search, mode: "insensitive" } },
+      { lastName: { contains: filters.search, mode: "insensitive" } },
+      { email: { contains: filters.search, mode: "insensitive" } },
+      { phone: { contains: filters.search, mode: "insensitive" } },
     ];
   }
 
@@ -307,15 +319,15 @@ export const getStudents = async (filters?: {
   // Filter by classId through StudentClass relationship
   if (filters?.classId) {
     // If teacher, verify they have access to this class
-    if (filters?.userRole === 'TEACHER' && filters?.userId) {
+    if (filters?.userRole === "TEACHER" && filters?.userId) {
       const classRecord = await prisma.class.findUnique({
         where: { id: filters.classId },
       });
       if (!classRecord || classRecord.headTeacherId !== filters.userId) {
-        throw new NotFoundError('Class not found');
+        throw new NotFoundError("Class not found");
       }
     }
-    
+
     // If teacher already has classHistory filter, replace it with the specific classId
     // (since we've verified the teacher has access to this class)
     where.classHistory = {
@@ -342,7 +354,7 @@ export const getStudents = async (filters?: {
       skip,
       take: limit,
       orderBy: {
-        firstName: 'asc',
+        firstName: "asc",
       },
     }),
     prisma.student.count({ where }),
@@ -362,7 +374,7 @@ export const getStudents = async (filters?: {
 export const getStudentById = async (
   id: string,
   userId?: string,
-  userRole?: string
+  userRole?: string,
 ) => {
   const student = await prisma.student.findUnique({
     where: { id },
@@ -372,12 +384,12 @@ export const getStudentById = async (
           class: true,
         },
         orderBy: {
-          startDate: 'desc',
+          startDate: "desc",
         },
       },
       payments: {
         orderBy: {
-          createdAt: 'desc',
+          createdAt: "desc",
         },
         include: {
           receipt: true,
@@ -386,7 +398,7 @@ export const getStudentById = async (
       attendance: {
         take: 30,
         orderBy: {
-          date: 'desc',
+          date: "desc",
         },
       },
       marks: {
@@ -395,29 +407,31 @@ export const getStudentById = async (
           class: true,
         },
         orderBy: {
-          createdAt: 'desc',
+          createdAt: "desc",
         },
       },
     },
   });
 
   if (!student) {
-    throw new NotFoundError('Student not found');
+    throw new NotFoundError("Student not found");
   }
 
   // If user is a TEACHER, check if student is in one of their assigned classes
-  if (userRole === 'TEACHER' && userId) {
-    const activeClass = student.classHistory.find((ch: { endDate: Date | null }) => !ch.endDate);
+  if (userRole === "TEACHER" && userId) {
+    const activeClass = student.classHistory.find(
+      (ch: { endDate: Date | null }) => !ch.endDate,
+    );
     if (!activeClass) {
-      throw new NotFoundError('Student not found');
+      throw new NotFoundError("Student not found");
     }
-    
+
     const classRecord = await prisma.class.findUnique({
       where: { id: activeClass.classId },
     });
-    
+
     if (!classRecord || classRecord.headTeacherId !== userId) {
-      throw new NotFoundError('Student not found');
+      throw new NotFoundError("Student not found");
     }
   }
 
@@ -430,7 +444,7 @@ export const updateStudent = async (id: string, data: UpdateStudentData) => {
   });
 
   if (!student) {
-    throw new NotFoundError('Student not found');
+    throw new NotFoundError("Student not found");
   }
 
   // Ensure dateOfBirth is a proper Date object if provided
@@ -439,30 +453,34 @@ export const updateStudent = async (id: string, data: UpdateStudentData) => {
     let dateOfBirth: Date;
     if (data.dateOfBirth instanceof Date) {
       dateOfBirth = data.dateOfBirth;
-    } else if (typeof data.dateOfBirth === 'string') {
-      const dateStr = data.dateOfBirth.includes('T') 
-        ? data.dateOfBirth 
+    } else if (typeof data.dateOfBirth === "string") {
+      const dateStr = data.dateOfBirth.includes("T")
+        ? data.dateOfBirth
         : `${data.dateOfBirth}T00:00:00.000Z`;
       dateOfBirth = new Date(dateStr);
     } else {
       dateOfBirth = new Date(data.dateOfBirth);
     }
-    
+
     if (isNaN(dateOfBirth.getTime())) {
-      throw new BadRequestError('Invalid date format for dateOfBirth');
+      throw new BadRequestError("Invalid date format for dateOfBirth");
     }
-    
+
     updateData.dateOfBirth = dateOfBirth;
   }
 
   // Handle profile image update - delete old image if new one is provided
-  if (data.profileImageUrl && student.profileImageUrl && data.profileImageUrl !== student.profileImageUrl) {
+  if (
+    data.profileImageUrl &&
+    student.profileImageUrl &&
+    data.profileImageUrl !== student.profileImageUrl
+  ) {
     // New image provided and different from old one - delete old image
     try {
       await deleteImageByUrl(student.profileImageUrl);
     } catch (error) {
       // Log error but don't fail the update if image deletion fails
-      console.error('Failed to delete old profile image:', error);
+      console.error("Failed to delete old profile image:", error);
     }
   }
 
@@ -475,7 +493,7 @@ export const updateStudent = async (id: string, data: UpdateStudentData) => {
           class: true,
         },
         orderBy: {
-          startDate: 'desc',
+          startDate: "desc",
         },
       },
     },
@@ -487,7 +505,7 @@ export const updateStudent = async (id: string, data: UpdateStudentData) => {
 export const assignStudentToClass = async (
   studentId: string,
   classId: string,
-  reason: string = 'initial assignment'
+  reason: string = "initial assignment",
 ) => {
   // Verify student exists
   const student = await prisma.student.findUnique({
@@ -495,7 +513,7 @@ export const assignStudentToClass = async (
   });
 
   if (!student) {
-    throw new NotFoundError('Student not found');
+    throw new NotFoundError("Student not found");
   }
 
   // Verify class exists
@@ -504,7 +522,7 @@ export const assignStudentToClass = async (
   });
 
   if (!classExists) {
-    throw new NotFoundError('Class not found');
+    throw new NotFoundError("Class not found");
   }
 
   // Check if student already has an active class assignment
@@ -516,7 +534,7 @@ export const assignStudentToClass = async (
   });
 
   if (activeAssignment) {
-    throw new ConflictError('Student already has an active class assignment');
+    throw new ConflictError("Student already has an active class assignment");
   }
 
   // Create new class assignment
@@ -545,7 +563,7 @@ export const assignStudentToClass = async (
           class: true,
         },
         orderBy: {
-          startDate: 'desc',
+          startDate: "desc",
         },
       },
     },
@@ -555,7 +573,7 @@ export const assignStudentToClass = async (
 export const transferStudent = async (
   studentId: string,
   newClassId: string,
-  reason: string = 'transfer'
+  reason: string = "transfer",
 ) => {
   // Verify student exists
   const student = await prisma.student.findUnique({
@@ -563,7 +581,7 @@ export const transferStudent = async (
   });
 
   if (!student) {
-    throw new NotFoundError('Student not found');
+    throw new NotFoundError("Student not found");
   }
 
   // Verify new class exists
@@ -572,7 +590,7 @@ export const transferStudent = async (
   });
 
   if (!newClass) {
-    throw new NotFoundError('Class not found');
+    throw new NotFoundError("Class not found");
   }
 
   // Find current active assignment
@@ -584,11 +602,13 @@ export const transferStudent = async (
   });
 
   if (!currentAssignment) {
-    throw new BadRequestError('Student does not have an active class assignment');
+    throw new BadRequestError(
+      "Student does not have an active class assignment",
+    );
   }
 
   if (currentAssignment.classId === newClassId) {
-    throw new BadRequestError('Student is already in this class');
+    throw new BadRequestError("Student is already in this class");
   }
 
   // Update old assignment with end date
@@ -596,7 +616,7 @@ export const transferStudent = async (
     where: { id: currentAssignment.id },
     data: {
       endDate: new Date(),
-      reason: reason || 'transferred',
+      reason: reason || "transferred",
     },
   });
 
@@ -605,7 +625,7 @@ export const transferStudent = async (
     data: {
       studentId,
       classId: newClassId,
-      reason: reason || 'transfer',
+      reason: reason || "transfer",
       startDate: new Date(),
     },
   });
@@ -619,11 +639,41 @@ export const transferStudent = async (
           class: true,
         },
         orderBy: {
-          startDate: 'desc',
+          startDate: "desc",
         },
       },
     },
   });
+};
+
+export const updateParentsPortal = async (
+  id: string,
+  parentsPortal: boolean,
+) => {
+  const student = await prisma.student.findUnique({
+    where: { id },
+  });
+
+  if (!student) {
+    throw new NotFoundError("Student not found");
+  }
+
+  const updated = await prisma.student.update({
+    where: { id },
+    data: { parentsPortal },
+    include: {
+      classHistory: {
+        include: {
+          class: true,
+        },
+        orderBy: {
+          startDate: "desc",
+        },
+      },
+    },
+  });
+
+  return updated;
 };
 
 export const deleteStudent = async (id: string) => {
@@ -632,13 +682,12 @@ export const deleteStudent = async (id: string) => {
   });
 
   if (!student) {
-    throw new NotFoundError('Student not found');
+    throw new NotFoundError("Student not found");
   }
 
   await prisma.student.delete({
     where: { id },
   });
 
-  return { message: 'Student deleted successfully' };
+  return { message: "Student deleted successfully" };
 };
-

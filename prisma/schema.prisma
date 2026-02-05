@@ -1,136 +1,65 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
-
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// User roles: REGISTRAR, OWNER, TEACHER
-enum UserRole {
-  REGISTRAR
-  OWNER
-  TEACHER
-}
-
-// Student class status: new (not assigned), assigned
-enum ClassStatus {
-  new
-  assigned
-}
-
-// Payment status: pending, confirmed
-enum PaymentStatus {
-  pending
-  confirmed
-}
-
-// Attendance status: present, absent, late
-enum AttendanceStatus {
-  present
-  absent
-  late
-}
-
-// Academic year status
-enum AcademicYearStatus {
-  ACTIVE
-  CLOSED
-}
-
-// Term status
-enum TermStatus {
-  OPEN
-  CLOSED
-}
-
-// Promotion status
-enum PromotionStatus {
-  PROMOTED
-  REPEATED
-  GRADUATED
-}
-
-// User model for authentication
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  role      UserRole
-  name      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  teacherClasses Class[] @relation("HeadTeacher")
+  id             String   @id @default(uuid())
+  email          String   @unique
+  password       String
+  role           UserRole
+  name           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  teacherClasses Class[]  @relation("HeadTeacher")
 
   @@index([email])
   @@index([role])
 }
 
-// Student model - central entity
 model Student {
-  id        String        @id @default(uuid())
-  studentNumber Int?      @unique // 5-digit number: YYXXX (year + sequential)
-  
-  // Personal details
-  firstName       String
-  lastName        String
-  dateOfBirth     DateTime
-  gender          String
-  nationality     String?
-  religion        String?
-  profileImageUrl String?
-  
-  // Contact info
-  email           String?
-  phone           String?
-  
-  // Parent info
-  parentName      String
-  parentPhone     String
-  parentEmail     String?
-  parentRelation  String // e.g., "Father", "Mother", "Guardian"
-  
-  // Address
-  address         String
-  city            String
-  state           String?
-  zipCode         String?
-  country         String?
-  
-  // Emergency contact
-  emergencyName   String
-  emergencyPhone  String
+  id                String         @id @default(uuid())
+  studentNumber     Int?           @unique
+  firstName         String
+  lastName          String
+  dateOfBirth       DateTime
+  gender            String
+  nationality       String?
+  religion          String?
+  profileImageUrl   String?
+  email             String?
+  phone             String?
+  parentName        String
+  parentPhone       String
+  parentEmail       String?
+  parentRelation    String
+  address           String
+  city              String
+  state             String?
+  zipCode           String?
+  country           String?
+  emergencyName     String
+  emergencyPhone    String
   emergencyRelation String
-  
-  // Medical info
   medicalConditions String?
   allergies         String?
-  bloodGroup         String?
-  
-  // Previous school history
-  previousSchool     String?
-  previousClass      String?
-  transferReason     String?
-  
-  // Status fields
-  classStatus     ClassStatus   @default(new)
-  paymentStatus   PaymentStatus @default(pending)
-  
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-
-  // Relations
-  classHistory    StudentClass[]
-  attendance      Attendance[]
-  marks           Mark[]
-  payments        Payment[]
+  bloodGroup        String?
+  previousSchool    String?
+  previousClass     String?
+  transferReason    String?
+  classStatus       ClassStatus    @default(new)
+  paymentStatus     PaymentStatus  @default(pending)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  parentsPortal     Boolean        @default(true)
+  attendance        Attendance[]
+  marks             Mark[]
+  payments          Payment[]
+  classHistory      StudentClass[]
 
   @@index([classStatus])
   @@index([paymentStatus])
@@ -138,43 +67,36 @@ model Student {
   @@index([studentNumber])
 }
 
-// Grade model - ordered sequence for grade progression
 model Grade {
-  id        String   @id @default(uuid())
-  name      String   @unique // e.g., "Grade 1", "Grade 2"
-  order     Int      @unique // Sequential order for progression
-  isHighest Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  classes Class[]
-  subjects Subject[]
-  subExams SubExam[]
+  id        String    @id @default(uuid())
+  name      String    @unique
+  order     Int       @unique
+  isHighest Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  classes   Class[]
+  subExams  SubExam[]
+  subjects  Subject[]
 
   @@index([order])
   @@index([isHighest])
 }
 
-// AcademicYear model - explicit academic year entity
 model AcademicYear {
-  id        String            @id @default(uuid())
-  name      String            @unique // e.g., "2024-2025"
+  id        String             @id @default(uuid())
+  name      String             @unique
   startDate DateTime
   endDate   DateTime?
   status    AcademicYearStatus @default(CLOSED)
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
-
-  // Relations
-  classes Class[]
-  terms   Term[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  classes   Class[]
+  terms     Term[]
 
   @@index([status])
   @@index([name])
 }
 
-// SystemSettings model - configuration storage
 model SystemSettings {
   id          String   @id @default(uuid())
   key         String   @unique
@@ -186,123 +108,106 @@ model SystemSettings {
   @@index([key])
 }
 
-// Class model
 model Class {
-  id            String   @id @default(uuid())
-  name          String   @unique // e.g., "Class A", "Grade 1A"
-  description   String?
+  id             String         @id @default(uuid())
+  name           String         @unique
+  description    String?
   academicYearId String?
-  gradeId       String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // Relations
-  headTeacherId String?
-  headTeacher   User?   @relation("HeadTeacher", fields: [headTeacherId], references: [id])
-  academicYear AcademicYear? @relation(fields: [academicYearId], references: [id])
-  grade        Grade?        @relation(fields: [gradeId], references: [id])
-  
-  studentClasses StudentClass[]
+  gradeId        String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  headTeacherId  String?
   attendance     Attendance[]
+  academicYear   AcademicYear?  @relation(fields: [academicYearId], references: [id])
+  grade          Grade?         @relation(fields: [gradeId], references: [id])
+  headTeacher    User?          @relation("HeadTeacher", fields: [headTeacherId], references: [id])
   marks          Mark[]
+  studentClasses StudentClass[]
 
   @@index([name])
   @@index([academicYearId])
   @@index([gradeId])
 }
 
-// Student-Class relationship with history preservation
 model StudentClass {
-  id             String          @id @default(uuid())
-  studentId      String
-  classId        String
-  startDate      DateTime        @default(now())
-  endDate        DateTime?       // NULL means active assignment
-  reason         String          // e.g., "initial assignment", "transfer"
-  promotionStatus PromotionStatus? // PROMOTED, REPEATED, GRADUATED, or null for active
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  id              String           @id @default(uuid())
+  studentId       String
+  classId         String
+  startDate       DateTime         @default(now())
+  endDate         DateTime?
+  reason          String
+  promotionStatus PromotionStatus?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  class           Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student         Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  // Relations
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
-
+  @@unique([studentId, classId, startDate])
   @@index([studentId])
   @@index([classId])
   @@index([studentId, classId])
   @@index([promotionStatus])
-  @@unique([studentId, classId, startDate])
 }
 
-// Teacher model (can be extended from User or separate)
 model Teacher {
   id        String   @id @default(uuid())
-  userId    String?  @unique // Link to User if teacher has account
+  userId    String?  @unique
   name      String
   email     String?
   phone     String?
-  subject   String?  // Primary subject
+  subject   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId])
 }
 
-// Subject model - subjects per grade
 model Subject {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   gradeId     String
-  name        String   // e.g., "Math", "English"
-  code        String?  // Subject code
+  name        String
+  code        String?
   description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  marks       Mark[]
+  subExams    SubExam[]
+  grade       Grade     @relation(fields: [gradeId], references: [id], onDelete: Cascade)
 
-  // Relations
-  grade    Grade     @relation(fields: [gradeId], references: [id], onDelete: Cascade)
-  marks    Mark[]
-  subExams SubExam[]
-
-  @@index([gradeId])
   @@unique([gradeId, name])
+  @@index([gradeId])
 }
 
-// Term model - academic terms (Term 1, Term 2)
 model Term {
-  id            String          @id @default(uuid())
-  name          String          // "Term 1", "Term 2" (not unique anymore)
+  id             String       @id @default(uuid())
+  name           String
   academicYearId String
-  startDate     DateTime        @db.Date
-  endDate       DateTime?       @db.Date
-  status        TermStatus      @default(OPEN)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  startDate      DateTime     @db.Date
+  endDate        DateTime?    @db.Date
+  status         TermStatus   @default(OPEN)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  marks          Mark[]
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
 
-  // Relations
-  academicYear  AcademicYear    @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
-  marks         Mark[]
-
-  @@unique([name, academicYearId]) // Term name unique per academic year
+  @@unique([name, academicYearId])
   @@index([academicYearId])
   @@index([status])
 }
 
-// SubExam model - sub-examinations per grade and subject (shared across all terms)
 model SubExam {
-  id           String   @id @default(uuid())
-  gradeId      String
-  subjectId    String
-  name         String   // "Quiz 1", "Assignment 1", "Mid Exam", "General Test"
-  maxScore     Float    // e.g., 5, 10, 20, 100
-  weightPercent Float   // e.g., 5%, 10%, 20%, 40%
-  examType     String   // "quiz", "assignment", "mid_exam", "general_test"
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Relations
-  grade    Grade    @relation(fields: [gradeId], references: [id], onDelete: Cascade)
-  subject Subject   @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  marks   Mark[]
+  id            String   @id @default(uuid())
+  gradeId       String
+  subjectId     String
+  name          String
+  maxScore      Float
+  weightPercent Float
+  examType      String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  marks         Mark[]
+  grade         Grade    @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  subject       Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
 
   @@unique([gradeId, subjectId, name])
   @@index([gradeId])
@@ -310,7 +215,6 @@ model SubExam {
   @@index([gradeId, subjectId])
 }
 
-// Attendance model - daily attendance records
 model Attendance {
   id        String           @id @default(uuid())
   studentId String
@@ -320,10 +224,8 @@ model Attendance {
   notes     String?
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
-
-  // Relations
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  class     Class            @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student   Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([studentId, date])
   @@index([studentId])
@@ -332,27 +234,24 @@ model Attendance {
   @@index([studentId, date])
 }
 
-// Marks model - academic marks per subject, term, student, sub-exam
 model Mark {
-  id         String   @id @default(uuid())
-  studentId  String
-  classId    String
-  subjectId  String
-  termId     String   // Reference to Term instead of string
-  subExamId  String   // Link to SubExam
-  score      Float
-  maxScore   Float    // Keep for validation, but should match subExam.maxScore
-  grade      String?  // Calculated grade
-  notes      String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  // Relations
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  class   Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
-  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  term    Term    @relation(fields: [termId], references: [id], onDelete: Cascade)
-  subExam SubExam @relation(fields: [subExamId], references: [id], onDelete: Cascade)
+  id        String   @id @default(uuid())
+  studentId String
+  classId   String
+  subjectId String
+  termId    String
+  subExamId String
+  score     Float
+  maxScore  Float
+  grade     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subExam   SubExam  @relation(fields: [subExamId], references: [id], onDelete: Cascade)
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  term      Term     @relation(fields: [termId], references: [id], onDelete: Cascade)
 
   @@unique([studentId, subjectId, termId, subExamId])
   @@index([studentId])
@@ -363,45 +262,39 @@ model Mark {
   @@index([studentId, subjectId, termId])
 }
 
-// PaymentType model - predefined payment types with fixed amounts
 model PaymentType {
-  id          String   @id @default(uuid())
-  name        String   @unique // e.g., "Tuition Fee", "Registration Fee"
-  amount      Float    // Fixed amount for this payment type
-  description String?  // Optional description
-  isActive    Boolean  @default(true) // Allow soft delete
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
+  id          String    @id @default(uuid())
+  name        String    @unique
+  amount      Float
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   payments    Payment[]
 
   @@index([name])
   @@index([isActive])
 }
 
-// Payment model - monthly payment records
 model Payment {
-  id            String         @id @default(uuid())
-  studentId     String
-  amount        Float
-  paymentTypeId String?        // Optional to support existing payments
-  month         String         // e.g., "2024-01" for January 2024
-  year          Int
-  status        PaymentStatus  @default(pending)
-  paymentDate   DateTime?
-  paymentMethod String?        // e.g., "cash", "bank_transfer", "card", "mobile_banking"
-  notes         String?
-  proofImageUrl String?        // Cloudinary URL for mobile banking transfer proof image
-  transactionNumber String?    // Transaction/reference number for mobile banking payments
-  receiptId     String?        // Foreign key to Receipt (allows multiple payments per receipt)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-
-  // Relations
-  student     Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  paymentType PaymentType? @relation(fields: [paymentTypeId], references: [id])
-  receipt     Receipt?     @relation(fields: [receiptId], references: [id], onDelete: SetNull)
+  id                String        @id @default(uuid())
+  studentId         String
+  amount            Float
+  paymentTypeId     String?
+  month             String
+  year              Int
+  status            PaymentStatus @default(pending)
+  paymentDate       DateTime?
+  paymentMethod     String?
+  notes             String?
+  proofImageUrl     String?
+  transactionNumber String?
+  receiptId         String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  paymentType       PaymentType?  @relation(fields: [paymentTypeId], references: [id])
+  receipt           Receipt?      @relation(fields: [receiptId], references: [id])
+  student           Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@unique([studentId, month, year])
   @@index([studentId])
@@ -411,16 +304,51 @@ model Payment {
   @@index([receiptId])
 }
 
-// Receipt model - linked to confirmed payments (one-to-many: one receipt can have multiple payments)
 model Receipt {
-  id          String   @id @default(uuid())
-  receiptNumber String @unique
-  issuedDate  DateTime @default(now())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  payments Payment[] // One receipt can have multiple payments
+  id            String    @id @default(uuid())
+  receiptNumber String    @unique
+  issuedDate    DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  payments      Payment[]
 
   @@index([receiptNumber])
+}
+
+enum UserRole {
+  REGISTRAR
+  OWNER
+  TEACHER
+}
+
+enum ClassStatus {
+  new
+  assigned
+}
+
+enum PaymentStatus {
+  pending
+  confirmed
+}
+
+enum AttendanceStatus {
+  present
+  absent
+  late
+}
+
+enum AcademicYearStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum TermStatus {
+  OPEN
+  CLOSED
+}
+
+enum PromotionStatus {
+  PROMOTED
+  REPEATED
+  GRADUATED
 }

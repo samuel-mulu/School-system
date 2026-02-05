@@ -1,10 +1,10 @@
-import { Router } from 'express';
-import { z } from 'zod';
+import { Router } from "express";
+import { z } from "zod";
 import * as studentController from "../controllers/student.controller.js";
-import { validate } from "../middleware/validation.js";
 import { authenticate } from "../middleware/auth.js";
 import { requireRegistrarOrOwner } from "../middleware/role.js";
 import { uploadSingle } from "../middleware/upload.js";
+import { validate } from "../middleware/validation.js";
 
 const router = Router();
 
@@ -40,6 +40,7 @@ const createStudentSchema = z.object({
     classId: z.string().uuid().optional(),
     assignClassReason: z.string().optional(),
     profileImageUrl: z.string().url().optional(),
+    parentsPortal: z.boolean().optional(),
   }),
 });
 
@@ -61,66 +62,72 @@ const transferSchema = z.object({
   }),
 });
 
+const toggleParentsPortalSchema = z.object({
+  body: z.object({
+    parentsPortal: z.boolean(),
+  }),
+});
+
 // Routes
 router.post(
-  '/upload-image',
+  "/upload-image",
   authenticate,
   requireRegistrarOrOwner,
   uploadSingle,
-  studentController.uploadStudentImage
+  studentController.uploadStudentImage,
 );
 
 router.post(
-  '/',
+  "/",
   authenticate,
   requireRegistrarOrOwner,
   validate(createStudentSchema),
-  studentController.createStudent
+  studentController.createStudent,
 );
 
-router.get(
-  '/',
-  authenticate,
-  studentController.getStudents
-);
+router.get("/", authenticate, studentController.getStudents);
 
-router.get(
-  '/:id',
-  authenticate,
-  studentController.getStudentById
-);
+router.get("/:id", authenticate, studentController.getStudentById);
 
 router.patch(
-  '/:id',
+  "/:id",
   authenticate,
   requireRegistrarOrOwner,
   validate(updateStudentSchema),
-  studentController.updateStudent
+  studentController.updateStudent,
 );
 
 router.post(
-  '/:id/assign-class',
+  "/:id/assign-class",
   authenticate,
   requireRegistrarOrOwner,
   validate(assignClassSchema),
-  studentController.assignStudentToClass
+  studentController.assignStudentToClass,
 );
 
 import { requireRole } from "../middleware/role.js";
 
 router.post(
-  '/:id/transfer',
+  "/:id/transfer",
   authenticate,
-  requireRole('OWNER'), // Only owner can transfer
+  requireRole("OWNER"), // Only owner can transfer
   validate(transferSchema),
-  studentController.transferStudent
+  studentController.transferStudent,
+);
+
+router.patch(
+  "/:id/toggle-parents-portal",
+  authenticate,
+  requireRegistrarOrOwner,
+  validate(toggleParentsPortalSchema),
+  studentController.toggleParentsPortal,
 );
 
 router.delete(
-  '/:id',
+  "/:id",
   authenticate,
-  requireRole('OWNER'), // Only owner can delete
-  studentController.deleteStudent
+  requireRole("OWNER"), // Only owner can delete
+  studentController.deleteStudent,
 );
 
 export default router;
