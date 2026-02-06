@@ -30,9 +30,10 @@ export const getCookieOptions = () => {
   return {
     httpOnly: true,
     secure: isProduction,
-    sameSite: isProduction ? 'none' : 'lax',
+    sameSite: (isProduction ? 'none' : 'lax') as 'none' | 'lax' | 'strict',
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: '/',
-  };
+    ...(isProduction ? { partitioned: true } : {}),
+  } as const;
 };
 
