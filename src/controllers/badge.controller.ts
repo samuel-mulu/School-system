@@ -38,7 +38,7 @@ export const getBadge = async (
       process.env.PARENTS_PORTAL_BASE_URL ||
       (isDevelopment
         ? "http://localhost:3000"
-        : "https://school-system-oaba.onrender.com"
+        : "https://students-nine-tau.vercel.app"
       )
         .trim()
         .replace(/\/+$/, "");
@@ -129,7 +129,7 @@ export const getBadgePreview = async (
       process.env.PARENTS_PORTAL_BASE_URL ||
       (isDevelopment
         ? "http://localhost:3000"
-        : "https://school-system-oaba.onrender.com"
+        : "https://students-nine-tau.vercel.app"
       )
         .trim()
         .replace(/\/+$/, "");
