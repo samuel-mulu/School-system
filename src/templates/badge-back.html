@@ -1,119 +1,113 @@
 <!doctype html>
 <html>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-<head>
-  <meta charset="UTF-8" />
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+      body {
+        width: 85.6mm;
+        height: 53.98mm;
+        font-family: Arial, Helvetica, sans-serif;
+        background: white;
+        display: flex;
+        flex-direction: column;
+      }
 
-    body {
-      width: 85.6mm;
-      height: 53.98mm;
-      font-family: Arial, Helvetica, sans-serif;
-      background: white;
-      display: flex;
-      flex-direction: column;
-    }
+      /* Grey Top Band */
+      .top-band {
+        background-color: #808080;
+        height: 12mm;
+        width: 100%;
+      }
 
-    /* Grey Top Band */
-    .top-band {
-      background-color: #808080;
-      height: 12mm;
-      width: 100%;
-    }
+      /* Center Content */
+      .center-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4mm;
+        padding: 3mm;
+      }
 
-    /* Center Content */
-    .center-content {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 3mm;
-      padding: 5mm;
-    }
+      .logo-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2mm;
+        text-align: center;
+      }
 
-    .logo-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 2mm;
-      text-align: center;
-    }
+      .school-logo {
+        width: 24mm;
+        height: 24mm;
+        object-fit: contain;
+        margin-bottom: 2mm;
+      }
 
-    .school-logo {
-      width: 16mm;
-      height: 16mm;
-      object-fit: contain;
-      margin-bottom: 1mm;
-    }
+      /* Bottom Contact */
+      .bottom-contact {
+        height: 10mm;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 3mm;
+        border-top: 0.5mm solid #e0e0e0;
+      }
 
-    .school-name {
-      font-size: 10pt;
-      font-weight: bold;
-      color: #333;
-      text-transform: uppercase;
-      letter-spacing: 0.5mm;
-    }
+      .contact-text {
+        font-size: 6pt;
+        color: #666;
+        margin-bottom: 0.5mm;
+      }
 
-    /* Bottom Contact */
-    .bottom-contact {
-      height: 10mm;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 0 3mm;
-      border-top: 0.5mm solid #e0e0e0;
-    }
+      .contact-numbers {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.3mm;
+      }
 
-    .contact-text {
-      font-size: 6pt;
-      color: #666;
-      margin-bottom: 0.5mm;
-    }
+      .contact-number {
+        font-size: 6pt;
+        font-weight: bold;
+        color: #333;
+      }
+    </style>
+  </head>
 
-    .contact-numbers {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.3mm;
-    }
+  <body>
+    <!-- Grey Top Band -->
+    <div class="top-band"></div>
 
-    .contact-number {
-      font-size: 6pt;
-      font-weight: bold;
-      color: #333;
-    }
-  </style>
-</head>
-
-<body>
-  <!-- Grey Top Band -->
-  <div class="top-band"></div>
-
-  <!-- Center Content -->
-  <div class="center-content">
-    <div class="logo-container">
-      <img src="{{SCHOOL_LOGO_URL}}" alt="School Logo" class="school-logo" onerror="this.src = '/logo.jpg'" />
-      <div class="school-name">DIGITAL KG</div>
-    </div>
-  </div>
-
-  <!-- Bottom Contact -->
-  <div class="bottom-contact">
-    <div style="display: flex; flex-direction: column; align-items: center">
-      <span class="contact-text">Contact Numbers:</span>
-      <div class="contact-numbers">
-        <span class="contact-number">0992023823</span>
-        <span class="contact-number">0914151769</span>
+    <!-- Center Content -->
+    <div class="center-content">
+      <div class="logo-container">
+        <img
+          src="{{SCHOOL_LOGO_URL}}"
+          alt="School Logo"
+          class="school-logo"
+          onerror="this.src = '/logo.jpg'"
+        />
       </div>
     </div>
-  </div>
-</body>
 
+    <!-- Bottom Contact -->
+    <div class="bottom-contact">
+      <div style="display: flex; flex-direction: column; align-items: center">
+        <span class="contact-text">Contact Numbers:</span>
+        <div class="contact-numbers">
+          <span class="contact-number">0992023823</span>
+          <span class="contact-number">0914151769</span>
+        </div>
+      </div>
+    </div>
+  </body>
 </html>

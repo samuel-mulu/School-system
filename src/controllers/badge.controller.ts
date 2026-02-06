@@ -28,12 +28,20 @@ export const getBadge = async (
     // Get student badge data
     const badgeData = await badgeService.getStudentBadgeData(studentId);
 
-    const parentsPortalBaseUrl = (
+    // Auto-detect environment: use localhost for dev, production URL for prod
+    const isDevelopment =
+      process.env.NODE_ENV === "development" ||
+      process.env.NODE_ENV === undefined ||
+      process.env.PARENTS_PORTAL_BASE_URL?.includes("localhost");
+
+    const parentsPortalBaseUrl =
       process.env.PARENTS_PORTAL_BASE_URL ||
-      "https://parents-portal-x9sp.vercel.app"
-    )
-      .trim()
-      .replace(/\/+$/, "");
+      (isDevelopment
+        ? "http://localhost:3000"
+        : "https://school-system-oaba.onrender.com"
+      )
+        .trim()
+        .replace(/\/+$/, "");
     const qrPrefixRaw = (
       process.env.PARENTS_PORTAL_QR_PREFIX || "/parents/"
     ).trim();
@@ -110,7 +118,49 @@ export const getBadgePreview = async (
   try {
     const { studentId } = req.params;
     const badgeData = await badgeService.getStudentBadgeData(studentId);
-    sendSuccess(res, badgeData);
+
+    // Auto-detect environment: use localhost for dev, production URL for prod
+    const isDevelopment =
+      process.env.NODE_ENV === "development" ||
+      process.env.NODE_ENV === undefined ||
+      process.env.PARENTS_PORTAL_BASE_URL?.includes("localhost");
+
+    const parentsPortalBaseUrl =
+      process.env.PARENTS_PORTAL_BASE_URL ||
+      (isDevelopment
+        ? "http://localhost:3000"
+        : "https://school-system-oaba.onrender.com"
+      )
+        .trim()
+        .replace(/\/+$/, "");
+    const qrPrefixRaw = (
+      process.env.PARENTS_PORTAL_QR_PREFIX || "/parents/"
+    ).trim();
+    const qrSuffixRaw = (
+      process.env.PARENTS_PORTAL_QR_SUFFIX || "/attendance"
+    ).trim();
+
+    const qrPrefix = (
+      qrPrefixRaw.startsWith("/") ? qrPrefixRaw : `/${qrPrefixRaw}`
+    ).replace(/\/+$/, "/");
+    const qrSuffix = qrSuffixRaw.startsWith("/")
+      ? qrSuffixRaw
+      : `/${qrSuffixRaw}`;
+
+    const qrCodeText = `${parentsPortalBaseUrl}${qrPrefix}${badgeData.student.id}${qrSuffix}`;
+
+    // Generate QR code for preview
+    const qrCodeDataUrl = await badgeService.generateQRCode(qrCodeText);
+
+    // Return complete badge data including QR code
+    const previewData = {
+      ...badgeData,
+      qrCode: qrCodeDataUrl,
+      qrCodeText:
+        process.env.DEBUG_BADGE_QR === "true" ? qrCodeText : undefined,
+    };
+
+    sendSuccess(res, previewData);
   } catch (error) {
     next(error);
   }

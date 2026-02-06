@@ -21,6 +21,9 @@ export interface BadgeData {
   };
   class: {
     name: string;
+    grade?: {
+      name: string;
+    };
   } | null;
   academicYear: {
     name: string;
@@ -45,6 +48,7 @@ export const getStudentBadgeData = async (
           class: {
             include: {
               academicYear: true,
+              grade: true,
             },
           },
         },
@@ -76,7 +80,6 @@ export const getStudentBadgeData = async (
     contactNumber: contactNumberSetting?.value || "(000) 0000 000 000",
     logoUrl: logoUrlSetting?.value || null,
   };
-
 
   return {
     student: {
@@ -154,15 +157,22 @@ export const renderBadgeHTML = (
   const replacements: Record<string, string> = {
     "{{STUDENT_FULL_NAME}}": `${data.student.firstName} ${data.student.lastName}`,
     "{{STUDENT_ID}}": displayStudentId,
-    "{{CLASS_NAME}}": data.class?.name || "N/A",
+    "{{CLASS_NAME}}": data.class
+      ? data.class.grade
+        ? `${data.class.grade.name} - ${data.class.name}`
+        : data.class.name
+      : "N/A",
     "{{BIRTHDATE}}": formattedDob,
     "{{ACADEMIC_YEAR}}": data.academicYear?.name || "N/A",
     "{{EMERGENCY_PHONE}}": data.student.emergencyPhone || "N/A",
     "{{STUDENT_PHOTO_URL}}":
-      data.student.profileImageUrl || `http://localhost:${process.env.PORT || 4000}/placeholder-student.png`,
+      data.student.profileImageUrl ||
+      `http://localhost:${process.env.PORT || 4000}/placeholder-student.png`,
     "{{SCHOOL_NAME}}": data.school.name,
     "{{SCHOOL_CONTACT}}": data.school.contactNumber,
-    "{{SCHOOL_LOGO_URL}}": data.school.logoUrl || `http://localhost:${process.env.PORT || 4000}/logo.jpg`,
+    "{{SCHOOL_LOGO_URL}}":
+      data.school.logoUrl ||
+      `http://localhost:${process.env.PORT || 4000}/logo.jpg`,
     "{{QR_CODE_DATA_URL}}": qrCodeDataUrl,
   };
 
@@ -173,9 +183,7 @@ export const renderBadgeHTML = (
   return html;
 };
 
-export const generateBadgePDF = async (
-  html: string,
-): Promise<Buffer> => {
+export const generateBadgePDF = async (html: string): Promise<Buffer> => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
 
@@ -204,9 +212,7 @@ export const generateBadgePDF = async (
   }
 };
 
-export const generateBadgePNG = async (
-  html: string,
-): Promise<Buffer> => {
+export const generateBadgePNG = async (html: string): Promise<Buffer> => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
 
