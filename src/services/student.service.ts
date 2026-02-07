@@ -2,9 +2,9 @@ import { ClassStatus, PaymentStatus } from "@prisma/client";
 import { prisma } from "../config/db.js";
 import { deleteImageByUrl } from "../utils/cloudinary.js";
 import {
-  BadRequestError,
-  ConflictError,
-  NotFoundError,
+    BadRequestError,
+    ConflictError,
+    NotFoundError,
 } from "../utils/errors.js";
 
 interface CreateStudentData {
@@ -350,6 +350,27 @@ export const getStudents = async (filters?: {
             class: true,
           },
         },
+        payments: filters?.month ? {
+          where: filters.month === "register_fee" 
+            ? {
+                OR: [
+                  { month: { endsWith: "-13" } },
+                  { paymentType: { name: { contains: "Register", mode: "insensitive" } } }
+                ]
+              }
+            : {
+                month: filters.month,
+                year: filters.year || new Date().getFullYear(),
+              },
+          include: {
+            receipt: true,
+            paymentType: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 5, // Just in case there are duplicates, take the latest
+        } : false,
       },
       skip,
       take: limit,
