@@ -123,7 +123,7 @@ export const renderBadgeHTML = (
   minimal: boolean = false,
 ): string => {
   // Try multiple paths to find templates (works in both dev and production)
-  let templatePath: string;
+  let templatePath: string | undefined;
   const possiblePaths = [
     join(__dirname, "..", "templates", `badge-${side}.html`), // Production (dist)
     join(__dirname, "..", "..", "src", "templates", `badge-${side}.html`), // Development
@@ -139,7 +139,7 @@ export const renderBadgeHTML = (
     }
   }
 
-  if (!templatePath!) {
+  if (!templatePath) {
     throw new Error(`Template file not found: badge-${side}.html`);
   }
 
@@ -147,11 +147,17 @@ export const renderBadgeHTML = (
 
   // Format date of birth
   const dob = new Date(data.student.dateOfBirth);
-  const formattedDob = `${String(dob.getMonth() + 1).padStart(2, "0")}/${String(dob.getDate()).padStart(2, "0")}/${dob.getFullYear()}`;
+  const formattedDob = `${String(dob.getMonth() + 1).padStart(2, "0")}/${String(
+    dob.getDate(),
+  ).padStart(2, "0")}/${dob.getFullYear()}`;
 
   // Determine the base URL for assets
   const isDevelopment = process.env.NODE_ENV === "development";
-  const baseUrl = process.env.FRONTEND_URL || (isDevelopment ? `http://localhost:${process.env.PORT || 4000}` : "");
+  const baseUrl =
+    process.env.FRONTEND_URL ||
+    (isDevelopment
+      ? `http://localhost:${process.env.PORT || 4000}`
+      : "http://school-system-oaba.onrender.com");
 
   // Format student number for display (5 digits) or fallback to UUID
   const displayStudentId = data.student.studentNumber
@@ -166,7 +172,8 @@ export const renderBadgeHTML = (
     "{{BIRTHDATE}}": formattedDob,
     "{{ACADEMIC_YEAR}}": data.academicYear?.name || "N/A",
     "{{EMERGENCY_PHONE}}": data.student.emergencyPhone || "N/A",
-    "{{STUDENT_PHOTO_URL}}": data.student.profileImageUrl || `${baseUrl}/placeholder-student.png`,
+    "{{STUDENT_PHOTO_URL}}":
+      data.student.profileImageUrl || `${baseUrl}/placeholder-student.png`,
     "{{SCHOOL_NAME}}": data.school.name,
     "{{SCHOOL_CONTACT}}": data.school.contactNumber,
     "{{SCHOOL_LOGO_URL}}": data.school.logoUrl || `${baseUrl}/logo.jpg`,
@@ -180,6 +187,7 @@ export const renderBadgeHTML = (
 
   return html;
 };
+
 
 export const generateBadgePDF = async (html: string): Promise<Buffer> => {
   const browser = await chromium.launch();
