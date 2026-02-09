@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import * as badgeService from "../services/badge.service.js";
+import { BadRequestError } from "../utils/errors.js";
 import { sendSuccess } from "../utils/responses.js";
 
 export const getBadge = async (
@@ -13,6 +14,19 @@ export const getBadge = async (
     const side = (req.query.side as string) || "combined";
     const minimal = req.query.minimal === "true" || req.query.type === "minimal";
 
+    // Validate format
+    if (!["pdf", "png"].includes(format)) {
+      throw new BadRequestError('Invalid format. Must be "pdf" or "png"');
+    }
+
+    // Validate side
+    if (!["front", "back", "combined"].includes(side)) {
+      throw new BadRequestError(
+        'Invalid side. Must be "front", "back", or "combined"',
+      );
+    }
+
+    // Get student badge data
     const badgeData = await badgeService.getStudentBadgeData(studentId);
 
     // Auto-detect environment: use localhost for dev, production URL for prod

@@ -9,9 +9,6 @@ import { NotFoundError } from "../utils/errors.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Ensure Playwright finds the browser in the local folder (for Render)
-process.env.PLAYWRIGHT_BROWSERS_PATH = join(process.cwd(), ".playwright-browsers");
-
 export interface BadgeData {
   student: {
     id: string;
@@ -125,9 +122,26 @@ export const renderBadgeHTML = (
   qrCodeDataUrl: string,
   minimal: boolean = false,
 ): string => {
-  // KISS: Simply look for templates relative to the current service file
-  // This works in both src/services and dist/services if we copy src/templates to dist/templates
-  const templatePath = join(__dirname, "..", "templates", `badge-${side}.html`);
+  // Try multiple paths to find templates (works in both dev and production)
+  let templatePath: string;
+  const possiblePaths = [
+    join(__dirname, "..", "templates", `badge-${side}.html`), // Production (dist)
+    join(__dirname, "..", "..", "src", "templates", `badge-${side}.html`), // Development
+  ];
+
+  for (const path of possiblePaths) {
+    try {
+      readFileSync(path, "utf-8");
+      templatePath = path;
+      break;
+    } catch {
+      // Try next path
+    }
+  }
+
+  if (!templatePath!) {
+    throw new Error(`Template file not found: badge-${side}.html`);
+  }
 
   let html = readFileSync(templatePath, "utf-8");
 
@@ -135,8 +149,9 @@ export const renderBadgeHTML = (
   const dob = new Date(data.student.dateOfBirth);
   const formattedDob = `${String(dob.getMonth() + 1).padStart(2, "0")}/${String(dob.getDate()).padStart(2, "0")}/${dob.getFullYear()}`;
 
-  // Assets base URL: Prefer environment variable or auto-detected
-  const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 4000}`;
+  // Determine the base URL for assets
+  const isDevelopment = process.env.NODE_ENV === "development";
+  const baseUrl = process.env.API_BASE_URL || (isDevelopment ? `http://localhost:${process.env.PORT || 4000}` : "");
 
   // Format student number for display (5 digits) or fallback to UUID
   const displayStudentId = data.student.studentNumber
@@ -167,15 +182,11 @@ export const renderBadgeHTML = (
 };
 
 export const generateBadgePDF = async (html: string): Promise<Buffer> => {
-  const browser = await chromium.launch({
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  });
+  const browser = await chromium.launch();
   const page = await browser.newPage();
 
   try {
-    await page.setContent(html, {
-      waitUntil: "networkidle",
-    });
+    await page.setContent(html, { waitUntil: "networkidle" });
 
     // CR80 size: 85.60mm x 53.98mm
     // At 300 DPI: 1011px x 638px (approximately)
@@ -200,9 +211,7 @@ export const generateBadgePDF = async (html: string): Promise<Buffer> => {
 };
 
 export const generateBadgePNG = async (html: string): Promise<Buffer> => {
-  const browser = await chromium.launch({
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  });
+  const browser = await chromium.launch();
   const page = await browser.newPage();
 
   try {
@@ -226,9 +235,7 @@ export const generateCombinedPDF = async (
   frontHtml: string,
   backHtml: string,
 ): Promise<Buffer> => {
-  const browser = await chromium.launch({
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  });
+  const browser = await chromium.launch();
   const page = await browser.newPage();
 
   try {
