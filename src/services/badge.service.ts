@@ -123,23 +123,27 @@ export const renderBadgeHTML = (
   minimal: boolean = false,
 ): string => {
   // Try multiple paths to find templates (works in both dev and production)
-  let templatePath: string;
+  let templatePath: string = "";
   const possiblePaths = [
     join(__dirname, "..", "templates", `badge-${side}.html`), // Production (dist)
     join(__dirname, "..", "..", "src", "templates", `badge-${side}.html`), // Development
+    join(process.cwd(), "dist", "templates", `badge-${side}.html`), // Root relative (dist)
+    join(process.cwd(), "src", "templates", `badge-${side}.html`), // Root relative (src)
   ];
 
   for (const path of possiblePaths) {
     try {
-      readFileSync(path, "utf-8");
-      templatePath = path;
-      break;
+      if (readFileSync(path, "utf-8")) {
+        templatePath = path;
+        break;
+      }
     } catch {
       // Try next path
     }
   }
 
-  if (!templatePath!) {
+  if (!templatePath) {
+    console.error(`[badge] Template not found for side ${side}. Tried:`, possiblePaths);
     throw new Error(`Template file not found: badge-${side}.html`);
   }
 
@@ -182,11 +186,22 @@ export const renderBadgeHTML = (
 };
 
 export const generateBadgePDF = async (html: string): Promise<Buffer> => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
   const page = await browser.newPage();
 
   try {
-    await page.setContent(html, { waitUntil: "networkidle" });
+    // Determine the base URL for asset resolution
+    const isDevelopment = process.env.NODE_ENV === "development";
+    const baseUrl =
+      process.env.API_BASE_URL ||
+      (isDevelopment ? `http://localhost:${process.env.PORT || 4000}` : "");
+
+    await page.setContent(html, {
+      waitUntil: "networkidle",
+      baseURL: baseUrl,
+    });
 
     // CR80 size: 85.60mm x 53.98mm
     // At 300 DPI: 1011px x 638px (approximately)
@@ -211,7 +226,9 @@ export const generateBadgePDF = async (html: string): Promise<Buffer> => {
 };
 
 export const generateBadgePNG = async (html: string): Promise<Buffer> => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
   const page = await browser.newPage();
 
   try {
@@ -235,7 +252,9 @@ export const generateCombinedPDF = async (
   frontHtml: string,
   backHtml: string,
 ): Promise<Buffer> => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
   const page = await browser.newPage();
 
   try {
