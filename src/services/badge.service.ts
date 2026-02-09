@@ -192,15 +192,8 @@ export const generateBadgePDF = async (html: string): Promise<Buffer> => {
   const page = await browser.newPage();
 
   try {
-    // Determine the base URL for asset resolution
-    const isDevelopment = process.env.NODE_ENV === "development";
-    const baseUrl =
-      process.env.API_BASE_URL ||
-      (isDevelopment ? `http://localhost:${process.env.PORT || 4000}` : "");
-
     await page.setContent(html, {
       waitUntil: "networkidle",
-      baseURL: baseUrl,
     });
 
     // CR80 size: 85.60mm x 53.98mm
