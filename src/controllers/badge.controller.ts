@@ -12,6 +12,7 @@ export const getBadge = async (
     const { studentId } = req.params;
     const format = (req.query.format as string) || "pdf";
     const side = (req.query.side as string) || "combined";
+    const minimal = req.query.minimal === "true" || req.query.type === "minimal";
 
     // Validate format
     if (!["pdf", "png"].includes(format)) {
@@ -73,6 +74,7 @@ export const getBadge = async (
         "front",
         badgeData,
         qrCodeDataUrl,
+        minimal,
       );
       const backHtml = badgeService.renderBadgeHTML(
         "back",
@@ -88,6 +90,7 @@ export const getBadge = async (
         side as "front" | "back",
         badgeData,
         qrCodeDataUrl,
+        minimal,
       );
 
       if (format === "pdf") {

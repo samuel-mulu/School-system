@@ -270,8 +270,35 @@
       }
     </style>
   </head>
-
-  <body>
+  <body class="{{MINIMAL_CLASS}}">
+    <style>
+      .minimal-view .content {
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding-top: 4mm;
+      }
+      .minimal-view .left-column {
+        align-items: center;
+        text-align: center;
+      }
+      .minimal-view .info-row,
+      .minimal-view .right-column,
+      .minimal-view .qr-label {
+        display: none !important;
+      }
+      .minimal-view .qr-section {
+        margin-top: 2mm;
+        align-items: center;
+      }
+      .minimal-view .qr-container {
+        width: 25mm;
+        height: 25mm;
+      }
+      .minimal-view .student-name {
+        font-size: 11pt;
+      }
+    </style>
     <div class="container">
       <!-- Maroon Header -->
       <div class="header">

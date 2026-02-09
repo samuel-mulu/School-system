@@ -120,6 +120,7 @@ export const renderBadgeHTML = (
   side: "front" | "back",
   data: BadgeData,
   qrCodeDataUrl: string,
+  minimal: boolean = false,
 ): string => {
   // Try multiple paths to find templates (works in both dev and production)
   let templatePath: string;
@@ -148,6 +149,10 @@ export const renderBadgeHTML = (
   const dob = new Date(data.student.dateOfBirth);
   const formattedDob = `${String(dob.getMonth() + 1).padStart(2, "0")}/${String(dob.getDate()).padStart(2, "0")}/${dob.getFullYear()}`;
 
+  // Determine the base URL for assets
+  const isDevelopment = process.env.NODE_ENV === "development";
+  const baseUrl = process.env.API_BASE_URL || (isDevelopment ? `http://localhost:${process.env.PORT || 4000}` : "");
+
   // Format student number for display (5 digits) or fallback to UUID
   const displayStudentId = data.student.studentNumber
     ? String(data.student.studentNumber).padStart(5, "0")
@@ -157,23 +162,16 @@ export const renderBadgeHTML = (
   const replacements: Record<string, string> = {
     "{{STUDENT_FULL_NAME}}": `${data.student.firstName} ${data.student.lastName}`,
     "{{STUDENT_ID}}": displayStudentId,
-    "{{CLASS_NAME}}": data.class
-      ? data.class.grade
-        ? `${data.class.grade.name} - ${data.class.name}`
-        : data.class.name
-      : "N/A",
+    "{{CLASS_NAME}}": data.class ? data.class.name : "N/A",
     "{{BIRTHDATE}}": formattedDob,
     "{{ACADEMIC_YEAR}}": data.academicYear?.name || "N/A",
     "{{EMERGENCY_PHONE}}": data.student.emergencyPhone || "N/A",
-    "{{STUDENT_PHOTO_URL}}":
-      data.student.profileImageUrl ||
-      `http://localhost:${process.env.PORT || 4000}/placeholder-student.png`,
+    "{{STUDENT_PHOTO_URL}}": data.student.profileImageUrl || `${baseUrl}/placeholder-student.png`,
     "{{SCHOOL_NAME}}": data.school.name,
     "{{SCHOOL_CONTACT}}": data.school.contactNumber,
-    "{{SCHOOL_LOGO_URL}}":
-      data.school.logoUrl ||
-      `http://localhost:${process.env.PORT || 4000}/logo.jpg`,
+    "{{SCHOOL_LOGO_URL}}": data.school.logoUrl || `${baseUrl}/logo.jpg`,
     "{{QR_CODE_DATA_URL}}": qrCodeDataUrl,
+    "{{MINIMAL_CLASS}}": minimal ? "minimal-view" : "",
   };
 
   Object.entries(replacements).forEach(([key, value]) => {
