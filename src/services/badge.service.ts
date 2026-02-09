@@ -9,6 +9,9 @@ import { NotFoundError } from "../utils/errors.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Ensure Playwright finds the browser in the local folder (for Render)
+process.env.PLAYWRIGHT_BROWSERS_PATH = join(process.cwd(), ".playwright-browsers");
+
 export interface BadgeData {
   student: {
     id: string;

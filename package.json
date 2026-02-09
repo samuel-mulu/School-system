@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc || true; prisma generate && (xcopy /E /I /Y src\\templates dist\\templates || cp -R src/templates dist/ || true)",
+    "build": "prisma generate && PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers npx playwright install chromium && tsc || true && (xcopy /E /I /Y src\\templates dist\\templates || cp -R src/templates dist/ || true)",
     "start": "node dist/server.js",
     "seed": "tsx prisma/seed.ts",
     "prisma:generate": "prisma generate",
@@ -13,7 +13,7 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "lint": "eslint . --ext .ts",
     "test": "jest",
-    "postinstall": "prisma generate && npx playwright install chromium"
+    "postinstall": "prisma generate && PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers npx playwright install chromium"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
