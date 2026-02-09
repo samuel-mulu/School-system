@@ -151,7 +151,7 @@ export const renderBadgeHTML = (
 
   // Determine the base URL for assets
   const isDevelopment = process.env.NODE_ENV === "development";
-  const baseUrl = process.env.API_BASE_URL || (isDevelopment ? `http://localhost:${process.env.PORT || 4000}` : "");
+  const baseUrl = process.env.FRONTEND_URL || (isDevelopment ? `http://localhost:${process.env.PORT || 4000}` : "");
 
   // Format student number for display (5 digits) or fallback to UUID
   const displayStudentId = data.student.studentNumber
