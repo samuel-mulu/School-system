@@ -13,7 +13,7 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "lint": "eslint . --ext .ts",
     "test": "jest",
-    "postinstall": "husky install || true"
+    "postinstall": "prisma generate && npx playwright install chromium --with-deps"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
