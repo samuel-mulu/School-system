@@ -38,6 +38,8 @@ export interface BadgeData {
 export const getStudentBadgeData = async (
   studentId: string,
 ): Promise<BadgeData> => {
+  console.log(`[badge-debug] Fetching badge data for student ID: ${studentId}`);
+
   const student = await prisma.student.findUnique({
     where: { id: studentId },
     include: {
@@ -57,8 +59,11 @@ export const getStudentBadgeData = async (
   });
 
   if (!student) {
+    console.error(`[badge-debug] Student with ID ${studentId} not found.`);
     throw new NotFoundError("Student not found");
   }
+  console.log(`[badge-debug] Successfully fetched student record for: ${student.firstName} ${student.lastName}`);
+
 
   // Get current class and academic year
   const currentClassHistory = student.classHistory[0];
@@ -125,8 +130,17 @@ export const renderBadgeHTML = (
   // KISS: Simply look for templates relative to the current service file
   // This works in both src/services and dist/services if we copy src/templates to dist/templates
   const templatePath = join(__dirname, "..", "templates", `badge-${side}.html`);
+  console.log(`[badge-debug] Template path: ${templatePath}`);
+  console.log(`[badge-debug] __dirname: ${__dirname}`);
 
-  let html = readFileSync(templatePath, "utf-8");
+  let html: string;
+  try {
+    html = readFileSync(templatePath, "utf-8");
+    console.log(`[badge-debug] Template loaded successfully from: ${templatePath}`);
+  } catch (error) {
+    console.error(`[badge-debug] Failed to read template at: ${templatePath}`, error);
+    throw new Error(`Template file not found at ${templatePath}`);
+  }
 
   // Format date of birth
   const dob = new Date(data.student.dateOfBirth);
@@ -164,20 +178,31 @@ export const renderBadgeHTML = (
 };
 
 export const generateBadgePDF = async (html: string): Promise<Buffer> => {
+  console.log("[badge-debug] Launching chromium for PDF...");
   const browser = await chromium.launch({
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  }).catch(err => {
+    console.error("[badge-debug] Playwright launch failed:", err);
+    throw err;
   });
+  console.log("[badge-debug] Chromium launched successfully.");
   const page = await browser.newPage();
 
   try {
+    console.log("[badge-debug] Setting page content...");
     await page.setContent(html, {
       waitUntil: "networkidle",
+    }).catch(err => {
+      console.error("[badge-debug] setContent failed:", err);
+      throw err;
     });
+    console.log("[badge-debug] Page content set.");
 
     // CR80 size: 85.60mm x 53.98mm
     // At 300 DPI: 1011px x 638px (approximately)
     await page.setViewportSize({ width: 1011, height: 638 });
 
+    console.log("[badge-debug] Generating PDF...");
     const pdf = await page.pdf({
       width: "85.6mm",
       height: "53.98mm",
@@ -188,7 +213,11 @@ export const generateBadgePDF = async (html: string): Promise<Buffer> => {
         bottom: "0mm",
         left: "0mm",
       },
+    }).catch(err => {
+      console.error("[badge-debug] Playwright PDF generation failed:", err);
+      throw err;
     });
+    console.log("[badge-debug] PDF generated successfully.");
 
     return Buffer.from(pdf);
   } finally {
