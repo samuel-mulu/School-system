@@ -122,30 +122,9 @@ export const renderBadgeHTML = (
   qrCodeDataUrl: string,
   minimal: boolean = false,
 ): string => {
-  // Try multiple paths to find templates (works in both dev and production)
-  let templatePath: string = "";
-  const possiblePaths = [
-    join(__dirname, "..", "templates", `badge-${side}.html`), // Production (dist)
-    join(__dirname, "..", "..", "src", "templates", `badge-${side}.html`), // Development
-    join(process.cwd(), "dist", "templates", `badge-${side}.html`), // Root relative (dist)
-    join(process.cwd(), "src", "templates", `badge-${side}.html`), // Root relative (src)
-  ];
-
-  for (const path of possiblePaths) {
-    try {
-      if (readFileSync(path, "utf-8")) {
-        templatePath = path;
-        break;
-      }
-    } catch {
-      // Try next path
-    }
-  }
-
-  if (!templatePath) {
-    console.error(`[badge] Template not found for side ${side}. Tried:`, possiblePaths);
-    throw new Error(`Template file not found: badge-${side}.html`);
-  }
+  // KISS: Simply look for templates relative to the current service file
+  // This works in both src/services and dist/services if we copy src/templates to dist/templates
+  const templatePath = join(__dirname, "..", "templates", `badge-${side}.html`);
 
   let html = readFileSync(templatePath, "utf-8");
 
@@ -153,9 +132,8 @@ export const renderBadgeHTML = (
   const dob = new Date(data.student.dateOfBirth);
   const formattedDob = `${String(dob.getMonth() + 1).padStart(2, "0")}/${String(dob.getDate()).padStart(2, "0")}/${dob.getFullYear()}`;
 
-  // Determine the base URL for assets
-  const isDevelopment = process.env.NODE_ENV === "development";
-  const baseUrl = process.env.API_BASE_URL || (isDevelopment ? `http://localhost:${process.env.PORT || 4000}` : "");
+  // Assets base URL: Prefer environment variable or auto-detected
+  const baseUrl = process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 4000}`;
 
   // Format student number for display (5 digits) or fallback to UUID
   const displayStudentId = data.student.studentNumber
