@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import * as marksController from "../controllers/marks.controller.js";
-import { validate } from "../middleware/validation.js";
 import { authenticate } from "../middleware/auth.js";
-import { requireTeacher } from "../middleware/role.js";
+import { requireTeacherOrAdmin } from "../middleware/role.js";
+import { validate } from "../middleware/validation.js";
 
 const router = Router();
 
@@ -51,7 +51,7 @@ const updateMarkSchema = z.object({
 router.post(
   '/',
   authenticate,
-  requireTeacher,
+  requireTeacherOrAdmin,
   validate(createMarkSchema),
   marksController.createMark
 );
@@ -71,7 +71,7 @@ router.get(
 router.post(
   '/record/student/:studentId/subexam/:subExamId',
   authenticate,
-  requireTeacher,
+  requireTeacherOrAdmin,
   validate(recordMarkSchema),
   marksController.recordMark
 );
@@ -79,7 +79,7 @@ router.post(
 router.post(
   '/record/bulk/subexam/:subExamId',
   authenticate,
-  requireTeacher,
+  requireTeacherOrAdmin,
   validate(recordBulkMarksSchema),
   marksController.recordBulkMarks
 );
@@ -123,7 +123,7 @@ router.get(
 router.patch(
   '/:id',
   authenticate,
-  requireTeacher,
+  requireTeacherOrAdmin,
   validate(updateMarkSchema),
   marksController.updateMark
 );
@@ -131,7 +131,7 @@ router.patch(
 router.delete(
   '/:id',
   authenticate,
-  requireTeacher,
+  requireTeacherOrAdmin,
   marksController.deleteMark
 );
 

@@ -21,4 +21,5 @@ export const requireRegistrar = requireRole(UserRole.REGISTRAR);
 export const requireOwner = requireRole(UserRole.OWNER);
 export const requireTeacher = requireRole(UserRole.TEACHER);
 export const requireRegistrarOrOwner = requireRole(UserRole.REGISTRAR, UserRole.OWNER);
+export const requireTeacherOrAdmin = requireRole(UserRole.TEACHER, UserRole.OWNER, UserRole.REGISTRAR);
 

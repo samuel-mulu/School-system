@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import * as attendanceController from "../controllers/attendance.controller.js";
-import { validate } from "../middleware/validation.js";
 import { authenticate } from "../middleware/auth.js";
-import { requireTeacher, requireRegistrarOrOwner } from "../middleware/role.js";
+import { requireRegistrarOrOwner, requireTeacherOrAdmin } from "../middleware/role.js";
+import { validate } from "../middleware/validation.js";
 
 const router = Router();
 
@@ -43,7 +43,7 @@ const updateAttendanceSchema = z.object({
 router.post(
   '/',
   authenticate,
-  requireTeacher,
+  requireTeacherOrAdmin,
   validate(markAttendanceSchema),
   attendanceController.markAttendance
 );
@@ -51,7 +51,7 @@ router.post(
 router.post(
   '/bulk',
   authenticate,
-  requireTeacher,
+  requireTeacherOrAdmin,
   validate(bulkAttendanceSchema),
   attendanceController.markBulkAttendance
 );
@@ -89,7 +89,7 @@ router.get(
 router.patch(
   '/:id',
   authenticate,
-  requireTeacher,
+  requireTeacherOrAdmin,
   validate(updateAttendanceSchema),
   attendanceController.updateAttendance
 );

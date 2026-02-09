@@ -39,7 +39,7 @@ export const getBadge = async (
       process.env.PARENTS_PORTAL_BASE_URL ||
       (isDevelopment
         ? "http://localhost:3000"
-        : "https://school-portal-x9sp.vercel.app"
+        : "https://parents-portal-x9sp.vercel.app"
       )
         .trim()
         .replace(/\/+$/, "");

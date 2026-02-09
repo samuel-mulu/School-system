@@ -1,5 +1,5 @@
 import { prisma } from "../config/db.js";
-import { NotFoundError, ConflictError, BadRequestError } from "../utils/errors.js";
+import { BadRequestError, ConflictError, NotFoundError } from "../utils/errors.js";
 import { assignGrade, calculateTermTotal, calculateYearAverage } from "./calculation.service.js";
 
 interface CreateMarkData {
@@ -293,57 +293,123 @@ export const recordBulkMarks = async (
   userId?: string,
   userRole?: string
 ) => {
-  // Get sub-exam to get related IDs
-  const subExam = await prisma.subExam.findUnique({
-    where: { id: subExamId },
-    include: {
-      subject: {
-        include: {
-          grade: {
-            include: {
-              classes: true,
+  // Get sub-exam and term once to check existence and permissions
+  const [subExam, term] = await Promise.all([
+    prisma.subExam.findUnique({
+      where: { id: subExamId },
+      include: {
+        subject: {
+          include: {
+            grade: {
+              include: {
+                classes: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    }),
+    prisma.term.findUnique({
+      where: { id: termId },
+    }),
+  ]);
 
   if (!subExam) {
     throw new NotFoundError('Sub-exam not found');
   }
 
-  // Verify term exists
-  const term = await prisma.term.findUnique({
-    where: { id: termId },
-  });
-
   if (!term) {
     throw new NotFoundError('Term not found');
   }
 
-  const results = [];
+  // Fetch all active student class assignments for the students being updated
+  const studentIds = marksData.map(m => m.studentId);
+  const studentAssignments = await prisma.studentClass.findMany({
+    where: {
+      studentId: { in: studentIds },
+      endDate: null,
+    },
+    include: {
+      class: true,
+    }
+  });
 
-  for (const markData of marksData) {
+  const assignmentMap = new Map(studentAssignments.map(sa => [sa.studentId, sa]));
+
+  // Process marks in parallel
+  const results = await Promise.all(marksData.map(async (markData) => {
     try {
-      const mark = await recordMark(
-        markData.studentId,
-        subExamId,
-        termId,
-        markData.score,
-        markData.notes,
-        userId,
-        userRole
-      );
-      results.push({ success: true, data: mark });
+      const studentClass = assignmentMap.get(markData.studentId);
+      if (!studentClass) {
+        throw new BadRequestError('Student is not assigned to any active class');
+      }
+
+      const classId = studentClass.classId;
+
+      // Verify class grade match
+      if (!subExam.subject.grade.classes.some((c) => c.id === classId)) {
+        throw new BadRequestError('Student\'s class does not belong to the same grade as the subject');
+      }
+
+      // Teacher permission check
+      if (userRole === 'TEACHER' && userId) {
+        if (studentClass.class.headTeacherId !== userId) {
+          throw new NotFoundError('Permission denied for this student');
+        }
+      }
+
+      // Validate score
+      if (markData.score < 0 || markData.score > subExam.maxScore) {
+        throw new BadRequestError(`Score must be between 0 and ${subExam.maxScore}`);
+      }
+
+      // Calculate grade
+      const percentage = (markData.score / subExam.maxScore) * 100;
+      const grade = assignGrade(percentage);
+
+      // Upsert mark
+      const mark = await prisma.mark.upsert({
+        where: {
+          studentId_subjectId_termId_subExamId: {
+            studentId: markData.studentId,
+            subjectId: subExam.subjectId,
+            termId,
+            subExamId,
+          },
+        },
+        update: {
+          score: markData.score,
+          grade,
+          notes: markData.notes,
+          classId,
+        },
+        create: {
+          studentId: markData.studentId,
+          classId,
+          subjectId: subExam.subjectId,
+          termId,
+          subExamId,
+          score: markData.score,
+          maxScore: subExam.maxScore,
+          grade,
+          notes: markData.notes,
+        },
+        include: {
+          student: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+        }
+      });
+
+      return { success: true, data: mark };
     } catch (error: any) {
-      results.push({
+      return {
         success: false,
         studentId: markData.studentId,
         error: error.message,
-      });
+      };
     }
-  }
+  }));
 
   return results;
 };

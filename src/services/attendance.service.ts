@@ -131,9 +131,15 @@ export const markBulkAttendance = async (
   userId?: string,
   userRole?: string
 ) => {
-  // Verify class exists
+  // Verify class exists and check permissions
   const classRecord = await prisma.class.findUnique({
     where: { id: classId },
+    include: {
+      studentClasses: {
+        where: { endDate: null },
+        select: { studentId: true }
+      }
+    }
   });
 
   if (!classRecord) {
@@ -150,26 +156,67 @@ export const markBulkAttendance = async (
   const attendanceDate = new Date(date);
   attendanceDate.setHours(0, 0, 0, 0);
 
-  const results = [];
+  // Get set of allowed student IDs for this class
+  const allowedStudentIds = new Set(classRecord.studentClasses.map(sc => sc.studentId));
 
-  for (const item of attendanceData) {
+  // Process all attendance records in parallel to improve performance
+  const results = await Promise.all(attendanceData.map(async (item) => {
     try {
-      const attendance = await markAttendance({
-        studentId: item.studentId,
-        classId,
-        date: attendanceDate,
-        status: item.status,
-        notes: item.notes,
-      }, userId, userRole);
-      results.push({ success: true, data: attendance });
+      // Check if student belongs to class
+      if (!allowedStudentIds.has(item.studentId)) {
+        return {
+          success: false,
+          studentId: item.studentId,
+          error: 'Student is not assigned to this class'
+        };
+      }
+
+      // Perform upsert (update if exists, else create)
+      const attendance = await prisma.attendance.upsert({
+        where: {
+          studentId_date: {
+            studentId: item.studentId,
+            date: attendanceDate,
+          },
+        },
+        update: {
+          status: item.status,
+          notes: item.notes,
+          classId: classId, // Ensure classId is correct
+        },
+        create: {
+          studentId: item.studentId,
+          classId: classId,
+          date: attendanceDate,
+          status: item.status,
+          notes: item.notes,
+        },
+        include: {
+          student: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+          class: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      return { success: true, data: attendance };
     } catch (error: any) {
-      results.push({
+      return {
         success: false,
         studentId: item.studentId,
         error: error.message,
-      });
+      };
     }
-  }
+  }));
 
   return results;
 };
