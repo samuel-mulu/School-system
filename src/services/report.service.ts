@@ -158,7 +158,7 @@ export const getPaymentHistory = async (studentId: string) => {
   };
 };
 
-export const getClassReport = async (classId: string, term?: string) => {
+export const getClassReport = async (classId: string, term?: string, page?: number, limit?: number) => {
   const classRecord = await prisma.class.findUnique({
     where: { id: classId },
     include: {
@@ -169,6 +169,8 @@ export const getClassReport = async (classId: string, term?: string) => {
         include: {
           student: true,
         },
+        // We will paginate the students after fetching or use slice
+        // For efficiency, we can use prisma pagination if we structure the query differently
       },
     },
   });
@@ -177,29 +179,43 @@ export const getClassReport = async (classId: string, term?: string) => {
     throw new NotFoundError('Class not found');
   }
 
-  // Get attendance for all students in class
-  const studentIds = classRecord.studentClasses.map((sc: { studentId: string }) => sc.studentId);
+  // Get ALL student IDs for summary calculations (attendance/marks)
+  const allStudentIds = classRecord.studentClasses.map((sc: { studentId: string }) => sc.studentId);
 
+  // Paginate students list
+  const total = allStudentIds.length;
+  let students = classRecord.studentClasses.map((sc: any) => ({
+    id: sc.student.id,
+    firstName: sc.student.firstName,
+    lastName: sc.student.lastName,
+    email: sc.student.email || undefined,
+    classStatus: sc.student.classStatus,
+  }));
+
+  let pagination = undefined;
+  if (page !== undefined && limit !== undefined) {
+    const skip = (page - 1) * limit;
+    students = students.slice(skip, skip + limit);
+    pagination = {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  // Get attendance for all students in class (for summary)
   const attendance = await prisma.attendance.findMany({
     where: {
       classId,
-      studentId: { in: studentIds },
-    },
-    include: {
-      student: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-        },
-      },
+      studentId: { in: allStudentIds },
     },
   });
 
-  // Get marks for all students in class
+  // Get marks for all students in class (for summary)
   const marksWhere: any = {
     classId,
-    studentId: { in: studentIds },
+    studentId: { in: allStudentIds },
   };
   if (term) {
     marksWhere.term = term;
@@ -207,33 +223,12 @@ export const getClassReport = async (classId: string, term?: string) => {
 
   const marks = await prisma.mark.findMany({
     where: marksWhere,
-    include: {
-      student: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-        },
-      },
-      subject: {
-        select: {
-          id: true,
-          name: true,
-          code: true,
-        },
-      },
-    },
   });
 
-  // Calculate attendance per student
-  const attendanceByStudent = studentIds.map((studentId: string) => {
+  // Calculate average attendance for the whole class
+  const attendanceByStudent = allStudentIds.map((studentId: string) => {
     const studentAttendance = attendance.filter((a: { studentId: string }) => a.studentId === studentId);
     return {
-      studentId,
-      total: studentAttendance.length,
-      present: studentAttendance.filter((a: { status: string }) => a.status === 'present').length,
-      absent: studentAttendance.filter((a: { status: string }) => a.status === 'absent').length,
-      late: studentAttendance.filter((a: { status: string }) => a.status === 'late').length,
       attendanceRate:
         studentAttendance.length > 0
           ? (studentAttendance.filter((a: { status: string }) => a.status === 'present').length /
@@ -243,30 +238,16 @@ export const getClassReport = async (classId: string, term?: string) => {
     };
   });
 
-  // Calculate marks per student
-  const marksByStudent = studentIds.map((studentId: string) => {
+  // Calculate average marks for the whole class
+  const marksByStudentCount = allStudentIds.map((studentId: string) => {
     const studentMarks = marks.filter((m: { studentId: string }) => m.studentId === studentId);
     const average =
       studentMarks.length > 0
         ? studentMarks.reduce((sum: number, m: { score: number; maxScore: number }) => sum + (m.score / m.maxScore) * 100, 0) /
           studentMarks.length
         : 0;
-    return {
-      studentId,
-      markCount: studentMarks.length,
-      average,
-      marks: studentMarks,
-    };
+    return { average };
   });
-
-  // Get students from classRecord
-  const students = classRecord.studentClasses.map((sc: any) => ({
-    id: sc.student.id,
-    firstName: sc.student.firstName,
-    lastName: sc.student.lastName,
-    email: sc.student.email || undefined,
-    classStatus: sc.student.classStatus,
-  }));
 
   return {
     class: {
@@ -274,8 +255,9 @@ export const getClassReport = async (classId: string, term?: string) => {
       name: classRecord.name,
     },
     term: term || 'all',
-    studentCount: classRecord.studentClasses.length,
+    studentCount: total,
     students,
+    pagination,
     attendanceSummary: {
       totalRecords: attendance.length,
       averageAttendanceRate:
@@ -287,12 +269,10 @@ export const getClassReport = async (classId: string, term?: string) => {
     academicSummary: {
       totalMarks: marks.length,
       averageScore:
-        marksByStudent.length > 0
-          ? marksByStudent.reduce((sum: number, m: { average: number }) => sum + m.average, 0) / marksByStudent.length
+        marksByStudentCount.length > 0
+          ? marksByStudentCount.reduce((sum: number, m: { average: number }) => sum + m.average, 0) / marksByStudentCount.length
           : 0,
     },
-    attendanceByStudent,
-    marksByStudent,
   };
 };
 
@@ -303,7 +283,7 @@ export const getPaymentReports = async (params: {
   registrarId?: string; // User ID of registrar who processed payment
   paymentMethod?: string; // cash, bank_transfer, card
 }) => {
-  const { academicYearId, paymentTypeId, month, registrarId, paymentMethod } = params;
+  const { academicYearId, paymentTypeId, month, paymentMethod } = params;
 
   // Build where clause for payments
   const whereClause: any = {

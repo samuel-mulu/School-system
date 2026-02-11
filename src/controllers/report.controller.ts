@@ -1,4 +1,4 @@
-import type { Request, Response, NextFunction } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import * as reportService from "../services/report.service.js";
 import { sendSuccess } from "../utils/responses.js";
 
@@ -35,7 +35,9 @@ export const getClassReport = async (
 ): Promise<void> => {
   try {
     const term = req.query.term as string;
-    const report = await reportService.getClassReport(req.params.classId, term);
+    const page = req.query.page ? parseInt(req.query.page as string) : undefined;
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+    const report = await reportService.getClassReport(req.params.classId, term, page, limit);
     sendSuccess(res, report);
   } catch (error) {
     next(error);
@@ -71,10 +73,11 @@ export const getRegistrarPaymentReports = async (
     const { academicYearId, paymentTypeId, startDate, endDate, paymentMethod, month } = req.query;
     
     if (!academicYearId) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Academic year ID is required',
       });
+      return;
     }
     
     const report = await reportService.getRegistrarPaymentReports({
