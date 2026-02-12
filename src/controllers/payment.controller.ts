@@ -1,8 +1,8 @@
-import type { Request, Response, NextFunction } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import * as paymentService from "../services/payment.service.js";
-import { sendSuccess } from "../utils/responses.js";
 import { uploadToCloudinary } from "../utils/cloudinary.js";
 import { BadRequestError } from "../utils/errors.js";
+import { sendSuccess } from "../utils/responses.js";
 
 export const createPayment = async (
   req: Request,
@@ -41,6 +41,7 @@ export const getPayments = async (
       status: req.query.status as any,
       month: req.query.month as string,
       year: req.query.year ? parseInt(req.query.year as string) : undefined,
+      paymentDate: req.query.paymentDate as string,
       page: req.query.page ? parseInt(req.query.page as string) : undefined,
       limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
     };

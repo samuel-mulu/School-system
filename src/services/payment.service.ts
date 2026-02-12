@@ -229,6 +229,7 @@ export const getPayments = async (filters?: {
   status?: PaymentStatus;
   month?: string;
   year?: number;
+  paymentDate?: string; // YYYY-MM-DD
   page?: number;
   limit?: number;
 }) => {
@@ -252,6 +253,16 @@ export const getPayments = async (filters?: {
 
   if (filters?.year) {
     where.year = filters.year;
+  }
+
+  if (filters?.paymentDate) {
+    const startDate = new Date(filters.paymentDate + 'T00:00:00.000Z');
+    const endDate = new Date(filters.paymentDate + 'T23:59:59.999Z');
+    
+    where.createdAt = {
+      gte: startDate,
+      lte: endDate,
+    };
   }
 
   const [payments, total] = await Promise.all([
