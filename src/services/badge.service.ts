@@ -121,6 +121,7 @@ export const renderBadgeHTML = (
   data: BadgeData,
   qrCodeDataUrl: string,
   minimal: boolean = false,
+  photoStyle: "square" | "rounded" | "circle" = "square",
 ): string => {
   // Try multiple paths to find templates (works in both dev and production)
   let templatePath: string | undefined;
@@ -179,6 +180,7 @@ export const renderBadgeHTML = (
     "{{SCHOOL_LOGO_URL}}": data.school.logoUrl || `${baseUrl}/logo.jpg`,
     "{{QR_CODE_DATA_URL}}": qrCodeDataUrl,
     "{{MINIMAL_CLASS}}": minimal ? "minimal-view" : "",
+    "{{PHOTO_STYLE_CLASS}}": `photo-${photoStyle}`,
   };
 
   Object.entries(replacements).forEach(([key, value]) => {
@@ -241,13 +243,12 @@ export const generateBadgePNG = async (html: string): Promise<Buffer> => {
 
 export const generateCombinedPDF = async (
   frontHtml: string,
-  backHtml: string,
 ): Promise<Buffer> => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
 
   try {
-    // Create combined HTML with page breaks
+    // Create combined HTML with page breaks (Now only front side)
     const combinedHtml = `
       <!DOCTYPE html>
       <html>
@@ -260,16 +261,11 @@ export const generateCombinedPDF = async (
             .page {
               width: 85.6mm;
               height: 53.98mm;
-              page-break-after: always;
-            }
-            .page:last-child {
-              page-break-after: auto;
             }
           </style>
         </head>
         <body>
           <div class="page">${frontHtml}</div>
-          <div class="page">${backHtml}</div>
         </body>
       </html>
     `;

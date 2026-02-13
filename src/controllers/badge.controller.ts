@@ -13,6 +13,7 @@ export const getBadge = async (
     const format = (req.query.format as string) || "pdf";
     const side = (req.query.side as string) || "combined";
     const minimal = req.query.minimal === "true" || req.query.type === "minimal";
+    const photoStyle = (req.query.photoStyle as string) || "square";
 
     // Validate format
     if (!["pdf", "png"].includes(format)) {
@@ -75,13 +76,9 @@ export const getBadge = async (
         badgeData,
         qrCodeDataUrl,
         minimal,
+        photoStyle as "square" | "rounded" | "circle",
       );
-      const backHtml = badgeService.renderBadgeHTML(
-        "back",
-        badgeData,
-        qrCodeDataUrl,
-      );
-      buffer = await badgeService.generateCombinedPDF(frontHtml, backHtml);
+      buffer = await badgeService.generateCombinedPDF(frontHtml);
       contentType = "application/pdf";
       filename = `badge-${studentId}-combined.pdf`;
     } else {
@@ -91,6 +88,7 @@ export const getBadge = async (
         badgeData,
         qrCodeDataUrl,
         minimal,
+        photoStyle as "square" | "rounded" | "circle",
       );
 
       if (format === "pdf") {
