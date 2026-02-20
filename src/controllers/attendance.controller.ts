@@ -1,19 +1,19 @@
-import type { Request, Response, NextFunction } from 'express';
+import type { NextFunction, Request, Response } from "express";
 import * as attendanceService from "../services/attendance.service.js";
 import { sendSuccess } from "../utils/responses.js";
 
 export const markAttendance = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const attendance = await attendanceService.markAttendance(
       req.body,
       req.user?.userId,
-      req.user?.role
+      req.user?.role,
     );
-    sendSuccess(res, attendance, 'Attendance marked successfully', 201);
+    sendSuccess(res, attendance, "Attendance marked successfully", 201);
   } catch (error) {
     next(error);
   }
@@ -22,7 +22,7 @@ export const markAttendance = async (
 export const markBulkAttendance = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { classId, date, attendanceData } = req.body;
@@ -31,9 +31,9 @@ export const markBulkAttendance = async (
       new Date(date),
       attendanceData,
       req.user?.userId,
-      req.user?.role
+      req.user?.role,
     );
-    sendSuccess(res, results, 'Bulk attendance marked successfully');
+    sendSuccess(res, results, "Bulk attendance marked successfully");
   } catch (error) {
     next(error);
   }
@@ -42,15 +42,19 @@ export const markBulkAttendance = async (
 export const getAttendance = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const filters = {
       studentId: req.query.studentId as string,
       classId: req.query.classId as string,
       date: req.query.date ? new Date(req.query.date as string) : undefined,
-      startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
-      endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
+      startDate: req.query.startDate
+        ? new Date(req.query.startDate as string)
+        : undefined,
+      endDate: req.query.endDate
+        ? new Date(req.query.endDate as string)
+        : undefined,
       status: req.query.status as any,
       page: req.query.page ? parseInt(req.query.page as string) : undefined,
       limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
@@ -67,13 +71,13 @@ export const getAttendance = async (
 export const getAttendanceById = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const attendance = await attendanceService.getAttendanceById(
       req.params.id,
       req.user?.userId,
-      req.user?.role
+      req.user?.role,
     );
     sendSuccess(res, attendance);
   } catch (error) {
@@ -84,16 +88,18 @@ export const getAttendanceById = async (
 export const getClassAttendanceForDate = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { classId } = req.params;
-    const date = req.query.date ? new Date(req.query.date as string) : new Date();
+    const date = req.query.date
+      ? new Date(req.query.date as string)
+      : new Date();
     const result = await attendanceService.getClassAttendanceForDate(
       classId,
       date,
       req.user?.userId,
-      req.user?.role
+      req.user?.role,
     );
     sendSuccess(res, result);
   } catch (error) {
@@ -104,16 +110,16 @@ export const getClassAttendanceForDate = async (
 export const updateAttendance = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const attendance = await attendanceService.updateAttendance(
       req.params.id,
       req.body,
       req.user?.userId,
-      req.user?.role
+      req.user?.role,
     );
-    sendSuccess(res, attendance, 'Attendance updated successfully');
+    sendSuccess(res, attendance, "Attendance updated successfully");
   } catch (error) {
     next(error);
   }
@@ -122,11 +128,11 @@ export const updateAttendance = async (
 export const deleteAttendance = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const result = await attendanceService.deleteAttendance(req.params.id);
-    sendSuccess(res, result, 'Attendance deleted successfully');
+    sendSuccess(res, result, "Attendance deleted successfully");
   } catch (error) {
     next(error);
   }
@@ -135,14 +141,14 @@ export const deleteAttendance = async (
 export const getClassAttendanceDates = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { classId } = req.params;
     const dates = await attendanceService.getClassAttendanceDates(
       classId,
       req.user?.userId,
-      req.user?.role
+      req.user?.role,
     );
     sendSuccess(res, dates);
   } catch (error) {
@@ -153,14 +159,14 @@ export const getClassAttendanceDates = async (
 export const getClassAttendanceSummary = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const { classId } = req.params;
     const summary = await attendanceService.getClassAttendanceSummary(
       classId,
       req.user?.userId,
-      req.user?.role
+      req.user?.role,
     );
     sendSuccess(res, summary);
   } catch (error) {

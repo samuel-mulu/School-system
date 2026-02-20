@@ -13,7 +13,7 @@ interface CreateAttendanceData {
 export const markAttendance = async (
   data: CreateAttendanceData,
   userId?: string,
-  userRole?: string
+  userRole?: string,
 ) => {
   // Verify student exists
   const student = await prisma.student.findUnique({
@@ -21,7 +21,7 @@ export const markAttendance = async (
   });
 
   if (!student) {
-    throw new NotFoundError('Student not found');
+    throw new NotFoundError("Student not found");
   }
 
   // Verify class exists
@@ -30,13 +30,13 @@ export const markAttendance = async (
   });
 
   if (!classRecord) {
-    throw new NotFoundError('Class not found');
+    throw new NotFoundError("Class not found");
   }
 
   // If user is a TEACHER, check if they are the head teacher
-  if (userRole === 'TEACHER' && userId) {
+  if (userRole === "TEACHER" && userId) {
     if (classRecord.headTeacherId !== userId) {
-      throw new NotFoundError('Class not found');
+      throw new NotFoundError("Class not found");
     }
   }
 
@@ -50,12 +50,12 @@ export const markAttendance = async (
   });
 
   if (!studentClass) {
-    throw new BadRequestError('Student is not assigned to this class');
+    throw new BadRequestError("Student is not assigned to this class");
   }
 
-  // Normalize date to start of day for comparison
+  // Normalize date to UTC start of day to prevent timezone shifts
   const attendanceDate = new Date(data.date);
-  attendanceDate.setHours(0, 0, 0, 0);
+  attendanceDate.setUTCHours(0, 0, 0, 0);
 
   // Check if attendance already exists for this student on this date
   const existing = await prisma.attendance.findUnique({
@@ -127,9 +127,13 @@ export const markAttendance = async (
 export const markBulkAttendance = async (
   classId: string,
   date: Date,
-  attendanceData: Array<{ studentId: string; status: AttendanceStatus; notes?: string }>,
+  attendanceData: Array<{
+    studentId: string;
+    status: AttendanceStatus;
+    notes?: string;
+  }>,
   userId?: string,
-  userRole?: string
+  userRole?: string,
 ) => {
   // Verify class exists and check permissions
   const classRecord = await prisma.class.findUnique({
@@ -137,86 +141,90 @@ export const markBulkAttendance = async (
     include: {
       studentClasses: {
         where: { endDate: null },
-        select: { studentId: true }
-      }
-    }
+        select: { studentId: true },
+      },
+    },
   });
 
   if (!classRecord) {
-    throw new NotFoundError('Class not found');
+    throw new NotFoundError("Class not found");
   }
 
   // If user is a TEACHER, check if they are the head teacher
-  if (userRole === 'TEACHER' && userId) {
+  if (userRole === "TEACHER" && userId) {
     if (classRecord.headTeacherId !== userId) {
-      throw new NotFoundError('Class not found');
+      throw new NotFoundError("Class not found");
     }
   }
 
   const attendanceDate = new Date(date);
-  attendanceDate.setHours(0, 0, 0, 0);
+  attendanceDate.setUTCHours(0, 0, 0, 0);
 
   // Get set of allowed student IDs for this class
-  const allowedStudentIds = new Set(classRecord.studentClasses.map(sc => sc.studentId));
+  const allowedStudentIds = new Set(
+    classRecord.studentClasses.map((sc) => sc.studentId),
+  );
 
   // Process all attendance records in parallel to improve performance
-  const results = await Promise.all(attendanceData.map(async (item) => {
-    try {
-      // Check if student belongs to class
-      if (!allowedStudentIds.has(item.studentId)) {
+  const results = await Promise.all(
+    attendanceData.map(async (item) => {
+      try {
+        // Check if student belongs to class
+        if (!allowedStudentIds.has(item.studentId)) {
+          return {
+            success: false,
+            studentId: item.studentId,
+            error: "Student is not assigned to this class",
+          };
+        }
+
+        // Perform upsert (update if exists, else create)
+        const attendance = await prisma.attendance.upsert({
+          where: {
+            studentId_date: {
+              studentId: item.studentId,
+              date: attendanceDate,
+            },
+          },
+          update: {
+            status: item.status,
+            notes: item.notes,
+            classId: classId, // Ensure classId is correct
+          },
+          create: {
+            studentId: item.studentId,
+            classId: classId,
+            date: attendanceDate,
+            status: item.status,
+            notes: item.notes,
+          },
+          include: {
+            student: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+            class: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        });
+
+        return { success: true, data: attendance };
+      } catch (error: any) {
         return {
           success: false,
           studentId: item.studentId,
-          error: 'Student is not assigned to this class'
+          error: error.message,
         };
       }
-
-      // Perform upsert (update if exists, else create)
-      const attendance = await prisma.attendance.upsert({
-        where: {
-          studentId_date: {
-            studentId: item.studentId,
-            date: attendanceDate,
-          },
-        },
-        update: {
-          status: item.status,
-          notes: item.notes,
-          classId: classId, // Ensure classId is correct
-        },
-        create: {
-          studentId: item.studentId,
-          classId: classId,
-          date: attendanceDate,
-          status: item.status,
-          notes: item.notes,
-        },
-        include: {
-          student: {
-            select: {
-              id: true,
-              firstName: true,
-              lastName: true,
-            },
-          },
-          class: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-        },
-      });
-
-      return { success: true, data: attendance };
-    } catch (error: any) {
-      return {
-        success: false,
-        studentId: item.studentId,
-        error: error.message,
-      };
-    }
-  }));
+    }),
+  );
 
   return results;
 };
@@ -240,7 +248,7 @@ export const getAttendance = async (filters?: {
   const where: any = {};
 
   // If user is a TEACHER, only show attendance for their assigned classes
-  if (filters?.userRole === 'TEACHER' && filters?.userId) {
+  if (filters?.userRole === "TEACHER" && filters?.userId) {
     const teacherClasses = await prisma.class.findMany({
       where: { headTeacherId: filters.userId },
       select: { id: true },
@@ -255,12 +263,12 @@ export const getAttendance = async (filters?: {
 
   if (filters?.classId) {
     // If teacher, verify they have access to this class
-    if (filters?.userRole === 'TEACHER' && filters?.userId) {
+    if (filters?.userRole === "TEACHER" && filters?.userId) {
       const classRecord = await prisma.class.findUnique({
         where: { id: filters.classId },
       });
       if (!classRecord || classRecord.headTeacherId !== filters.userId) {
-        throw new NotFoundError('Class not found');
+        throw new NotFoundError("Class not found");
       }
     }
     where.classId = filters.classId;
@@ -268,7 +276,7 @@ export const getAttendance = async (filters?: {
 
   if (filters?.date) {
     const date = new Date(filters.date);
-    date.setHours(0, 0, 0, 0);
+    date.setUTCHours(0, 0, 0, 0);
     where.date = date;
   }
 
@@ -279,7 +287,7 @@ export const getAttendance = async (filters?: {
     }
     if (filters.endDate) {
       const endDate = new Date(filters.endDate);
-      endDate.setHours(23, 59, 59, 999);
+      endDate.setUTCHours(23, 59, 59, 999);
       where.date.lte = endDate;
     }
   }
@@ -309,7 +317,7 @@ export const getAttendance = async (filters?: {
       skip,
       take: limit,
       orderBy: {
-        date: 'desc',
+        date: "desc",
       },
     }),
     prisma.attendance.count({ where }),
@@ -329,7 +337,7 @@ export const getAttendance = async (filters?: {
 export const getAttendanceById = async (
   id: string,
   userId?: string,
-  userRole?: string
+  userRole?: string,
 ) => {
   const attendance = await prisma.attendance.findUnique({
     where: { id },
@@ -340,13 +348,13 @@ export const getAttendanceById = async (
   });
 
   if (!attendance) {
-    throw new NotFoundError('Attendance record not found');
+    throw new NotFoundError("Attendance record not found");
   }
 
   // If user is a TEACHER, check if they are the head teacher of the class
-  if (userRole === 'TEACHER' && userId) {
+  if (userRole === "TEACHER" && userId) {
     if (attendance.class.headTeacherId !== userId) {
-      throw new NotFoundError('Attendance record not found');
+      throw new NotFoundError("Attendance record not found");
     }
   }
 
@@ -357,14 +365,21 @@ export const getClassAttendanceForDate = async (
   classId: string,
   date: Date,
   userId?: string,
-  userRole?: string
+  userRole?: string,
 ) => {
+  const attendanceDate = new Date(date);
+  attendanceDate.setUTCHours(0, 0, 0, 0);
+
   const classRecord = await prisma.class.findUnique({
     where: { id: classId },
     include: {
       studentClasses: {
         where: {
-          endDate: null, // Active students
+          startDate: { lte: attendanceDate },
+          OR: [
+            { endDate: null },
+            { endDate: { gte: attendanceDate } }
+          ]
         },
         include: {
           student: true,
@@ -374,18 +389,15 @@ export const getClassAttendanceForDate = async (
   });
 
   if (!classRecord) {
-    throw new NotFoundError('Class not found');
+    throw new NotFoundError("Class not found");
   }
 
   // If user is a TEACHER, check if they are the head teacher
-  if (userRole === 'TEACHER' && userId) {
+  if (userRole === "TEACHER" && userId) {
     if (classRecord.headTeacherId !== userId) {
-      throw new NotFoundError('Class not found');
+      throw new NotFoundError("Class not found");
     }
   }
-
-  const attendanceDate = new Date(date);
-  attendanceDate.setHours(0, 0, 0, 0);
 
   // Get all attendance records for this class and date
   const attendanceRecords = await prisma.attendance.findMany({
@@ -406,14 +418,19 @@ export const getClassAttendanceForDate = async (
 
   // Create a map of studentId -> attendance
   const attendanceMap = new Map(
-    attendanceRecords.map((record: { studentId: string }) => [record.studentId, record])
+    attendanceRecords.map((record: { studentId: string }) => [
+      record.studentId,
+      record,
+    ]),
   );
 
   // Combine with all students in the class
-  const result = classRecord.studentClasses.map((sc: { student: unknown; studentId: string }) => ({
-    student: sc.student,
-    attendance: attendanceMap.get(sc.studentId) || null,
-  }));
+  const result = classRecord.studentClasses.map(
+    (sc: { student: unknown; studentId: string }) => ({
+      student: sc.student,
+      attendance: attendanceMap.get(sc.studentId) || null,
+    }),
+  );
 
   return {
     class: {
@@ -429,7 +446,7 @@ export const updateAttendance = async (
   id: string,
   data: { status?: AttendanceStatus; notes?: string },
   userId?: string,
-  userRole?: string
+  userRole?: string,
 ) => {
   const attendance = await prisma.attendance.findUnique({
     where: { id },
@@ -439,13 +456,13 @@ export const updateAttendance = async (
   });
 
   if (!attendance) {
-    throw new NotFoundError('Attendance record not found');
+    throw new NotFoundError("Attendance record not found");
   }
 
   // If user is a TEACHER, check if they are the head teacher of the class
-  if (userRole === 'TEACHER' && userId) {
+  if (userRole === "TEACHER" && userId) {
     if (attendance.class.headTeacherId !== userId) {
-      throw new NotFoundError('Attendance record not found');
+      throw new NotFoundError("Attendance record not found");
     }
   }
 
@@ -478,20 +495,20 @@ export const deleteAttendance = async (id: string) => {
   });
 
   if (!attendance) {
-    throw new NotFoundError('Attendance record not found');
+    throw new NotFoundError("Attendance record not found");
   }
 
   await prisma.attendance.delete({
     where: { id },
   });
 
-  return { message: 'Attendance record deleted successfully' };
+  return { message: "Attendance record deleted successfully" };
 };
 
 export const getClassAttendanceDates = async (
   classId: string,
   userId?: string,
-  userRole?: string
+  userRole?: string,
 ) => {
   // Verify class exists
   const classRecord = await prisma.class.findUnique({
@@ -499,43 +516,30 @@ export const getClassAttendanceDates = async (
   });
 
   if (!classRecord) {
-    throw new NotFoundError('Class not found');
+    throw new NotFoundError("Class not found");
   }
 
   // If user is a TEACHER, check if they are the head teacher
-  if (userRole === 'TEACHER' && userId) {
+  if (userRole === "TEACHER" && userId) {
     if (classRecord.headTeacherId !== userId) {
-      throw new NotFoundError('Class not found');
+      throw new NotFoundError("Class not found");
     }
   }
 
-  // Get all attendance records for this class to extract unique dates
-  // Fetch ALL records without any limit to ensure we get all dates
-  const attendanceRecords = await prisma.attendance.findMany({
+  // Optimize: Use groupBy to get unique dates directly from the database
+  const groups = await prisma.attendance.groupBy({
+    by: ['date'],
     where: {
       classId,
     },
-    select: {
-      date: true,
-    },
     orderBy: {
-      date: 'desc',
+      date: "desc",
     },
-    // No limit - get all records to ensure all dates are included
   });
 
-  // Extract unique dates and format them as YYYY-MM-DD
-  const dateSet = new Set<string>();
-  attendanceRecords.forEach((record: { date: Date | string }) => {
-    const date = new Date(record.date);
-    date.setHours(0, 0, 0, 0);
-    const dateStr = date.toISOString().split('T')[0];
-    dateSet.add(dateStr);
-  });
-
-  // Convert set to array and sort descending (newest first)
-  const uniqueDates = Array.from(dateSet).sort((a, b) => {
-    return new Date(b).getTime() - new Date(a).getTime();
+  // Extract dates and format as YYYY-MM-DD using UTC values
+  const uniqueDates = groups.map((g: { date: Date }) => {
+    return g.date.toISOString().split("T")[0];
   });
 
   return uniqueDates;
@@ -544,28 +548,31 @@ export const getClassAttendanceDates = async (
 export const getClassAttendanceSummary = async (
   classId: string,
   userId?: string,
-  userRole?: string
+  userRole?: string,
 ) => {
   // Verify class exists
   const classRecord = await prisma.class.findUnique({
     where: { id: classId },
     include: {
       studentClasses: {
-        where: {
-          endDate: null, // Active students
-        },
+        // We will fetch all class history for this class to calculate historical totals accurately
+        select: {
+          studentId: true,
+          startDate: true,
+          endDate: true,
+        }
       },
     },
   });
 
   if (!classRecord) {
-    throw new NotFoundError('Class not found');
+    throw new NotFoundError("Class not found");
   }
 
   // If user is a TEACHER, check if they are the head teacher
-  if (userRole === 'TEACHER' && userId) {
+  if (userRole === "TEACHER" && userId) {
     if (classRecord.headTeacherId !== userId) {
-      throw new NotFoundError('Class not found');
+      throw new NotFoundError("Class not found");
     }
   }
 
@@ -584,33 +591,52 @@ export const getClassAttendanceSummary = async (
   const totalStudents = classRecord.studentClasses.length;
 
   // Group by date and calculate statistics
-  const dateMap = new Map<string, { present: number; absent: number; late: number }>();
+  const dateMap = new Map<
+    string,
+    { present: number; absent: number; late: number }
+  >();
 
   attendanceRecords.forEach((record) => {
     const date = new Date(record.date);
-    date.setHours(0, 0, 0, 0);
-    const dateStr = date.toISOString().split('T')[0];
+    // Use ISO date string (YYYY-MM-DD) for grouping to avoid TZ issues
+    const dateStr = date.toISOString().split("T")[0];
 
     if (!dateMap.has(dateStr)) {
       dateMap.set(dateStr, { present: 0, absent: 0, late: 0 });
     }
 
     const stats = dateMap.get(dateStr)!;
-    if (record.status === 'present') stats.present++;
-    else if (record.status === 'absent') stats.absent++;
-    else if (record.status === 'late') stats.late++;
+    if (record.status === "present") stats.present++;
+    else if (record.status === "absent") stats.absent++;
+    else if (record.status === "late") stats.late++;
   });
 
   // Convert to array and format
   const summary = Array.from(dateMap.entries())
-    .map(([date, stats]) => ({
-      date,
-      present: stats.present,
-      absent: stats.absent,
-      late: stats.late,
-      total: totalStudents,
-    }))
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .map(([date, stats]) => {
+      // Create a UTC-normalized date for comparison
+      const targetDate = new Date(date);
+      targetDate.setUTCHours(0, 0, 0, 0);
+
+      // Calculate how many students were assigned to the class on THIS specific date
+      const historicalTotal = classRecord.studentClasses.filter(sc => {
+        const start = new Date(sc.startDate);
+        start.setUTCHours(0, 0, 0, 0);
+        const end = sc.endDate ? new Date(sc.endDate) : null;
+        if (end) end.setUTCHours(0, 0, 0, 0);
+
+        return start <= targetDate && (!end || end >= targetDate);
+      }).length;
+
+      return {
+        date,
+        present: stats.present,
+        absent: stats.absent,
+        late: stats.late,
+        total: historicalTotal || stats.present + stats.absent + stats.late,
+      };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date));
 
   return summary;
 };
