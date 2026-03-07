@@ -60,6 +60,7 @@ model Student {
   marks             Mark[]
   payments          Payment[]
   classHistory      StudentClass[]
+  homework          Homework[]
 
   @@index([classStatus])
   @@index([paymentStatus])
@@ -123,6 +124,7 @@ model Class {
   headTeacher    User?          @relation("HeadTeacher", fields: [headTeacherId], references: [id])
   marks          Mark[]
   studentClasses StudentClass[]
+  homework       Homework[]
 
   @@index([name])
   @@index([academicYearId])
@@ -172,6 +174,7 @@ model Subject {
   updatedAt   DateTime  @updatedAt
   marks       Mark[]
   subExams    SubExam[]
+  homework    Homework[]
   grade       Grade     @relation(fields: [gradeId], references: [id], onDelete: Cascade)
 
   @@unique([gradeId, name])
@@ -351,4 +354,33 @@ enum PromotionStatus {
   PROMOTED
   REPEATED
   GRADUATED
+}
+
+model Homework {
+  id          String         @id @default(uuid())
+  studentId   String
+  classId     String
+  subjectId   String
+  title       String
+  description String?
+  date        DateTime       @db.Date
+  status      HomeworkStatus
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  student     Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  class       Class          @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject     Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, subjectId, date])
+  @@index([studentId])
+  @@index([classId])
+  @@index([subjectId])
+  @@index([date])
+  @@index([status])
+}
+
+enum HomeworkStatus {
+  done
+  not_done
 }
