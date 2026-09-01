@@ -1,10 +1,18 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from "../config/db.js";
 import { BadRequestError, NotFoundError } from "../utils/errors.js";
-import { createAcademicYear, getActiveAcademicYear } from "./academicYear.service.js";
-import { calculateYearAverage } from "./calculation.service.js";
-import { getHighestGrade, getNextGrade } from "./grade.service.js";
+import { getActiveAcademicYear } from "./academicYear.service.js";
+import { calculateWeightedScore } from "./calculation.service.js";
+import { getHighestGrade } from "./grade.service.js";
 import { getSetting } from "./settings.service.js";
-// Note: After running 'npx prisma generate', you can import Prisma enums from '../generated/prisma/client'
+
+type PromotionBlocker =
+  | 'NO_ACTIVE_YEAR'
+  | 'TERM1_NOT_FOUND'
+  | 'TERM2_NOT_FOUND'
+  | 'TERM2_NOT_CLOSED'
+  | 'INVALID_YEAR_FORMAT'
+  | 'ALREADY_PROMOTED';
 
 interface PromotionPreviewStudent {
   studentId: string;
@@ -21,13 +29,23 @@ interface PromotionPreviewStudent {
   nextClassName: string | null;
 }
 
+interface PromotionPreviewClass {
+  id: string;
+  name: string;
+  studentCount: number;
+}
+
 interface PromotionPreview {
   canPromote: boolean;
-  term2Status: string;
+  blockers: PromotionBlocker[];
+  term1Status?: string;
+  term2Status?: string;
+  nextAcademicYearName?: string;
   activeAcademicYear: {
     id: string;
     name: string;
   } | null;
+  classes: PromotionPreviewClass[];
   students: PromotionPreviewStudent[];
   summary: {
     total: number;
@@ -37,93 +55,247 @@ interface PromotionPreview {
   };
 }
 
-/**
- * Calculate overall yearly average for a student across all subjects
- */
-export const calculateStudentYearlyAverage = async (
-  studentId: string,
-  classId: string
-): Promise<number> => {
-  // Get the class to find its grade
-  const classRecord = await prisma.class.findUnique({
-    where: { id: classId },
-    select: { gradeId: true },
-  });
+interface GetPromotionPreviewOptions {
+  classId?: string;
+  includeStudents?: boolean;
+}
 
-  if (!classRecord || !classRecord.gradeId) {
+interface PromotionResult {
+  message: string;
+  promoted: number;
+  repeated: number;
+  graduated: number;
+  previousAcademicYear: { id: string; name: string };
+  newAcademicYear: { id: string; name: string };
+  termsCreated: string[];
+}
+
+const emptySummary = () => ({
+  total: 0,
+  passing: 0,
+  repeating: 0,
+  graduating: 0,
+});
+
+const computeNextAcademicYearName = (
+  yearName: string
+): { nextYearName: string; nextYearStartDate: Date; nextYearEndDate: Date } | null => {
+  const currentYearParts = yearName.split('-');
+  if (currentYearParts.length !== 2) {
+    return null;
+  }
+
+  const startYear = parseInt(currentYearParts[0], 10);
+  const endYear = parseInt(currentYearParts[1], 10);
+
+  if (Number.isNaN(startYear) || Number.isNaN(endYear)) {
+    return null;
+  }
+
+  return {
+    nextYearName: `${startYear + 1}-${endYear + 1}`,
+    nextYearStartDate: new Date(startYear + 1, 0, 1),
+    nextYearEndDate: new Date(endYear + 1, 11, 31),
+  };
+};
+
+const buildPreviewResponse = (
+  partial: Partial<PromotionPreview> & {
+    canPromote: boolean;
+    blockers: PromotionBlocker[];
+    students?: PromotionPreviewStudent[];
+  }
+): PromotionPreview => ({
+  canPromote: partial.canPromote,
+  blockers: partial.blockers,
+  term1Status: partial.term1Status,
+  term2Status: partial.term2Status,
+  nextAcademicYearName: partial.nextAcademicYearName,
+  activeAcademicYear: partial.activeAcademicYear ?? null,
+  classes: partial.classes ?? [],
+  students: partial.students ?? [],
+  summary: partial.summary ?? emptySummary(),
+});
+
+type SubExamRow = {
+  id: string;
+  subjectId: string;
+  maxScore: number;
+  weightPercent: number;
+  examType: string;
+};
+
+const markKey = (
+  studentId: string,
+  subjectId: string,
+  termId: string,
+  subExamId: string
+) => `${studentId}:${subjectId}:${termId}:${subExamId}`;
+
+const computeTermTotalFromMarks = (
+  subExams: SubExamRow[],
+  marksBySubExamId: Map<string, number>
+): number => {
+  let subExamTotal = 0;
+  let generalTestTotal = 0;
+
+  for (const subExam of subExams) {
+    const score = marksBySubExamId.get(subExam.id) ?? 0;
+    const weightedScore = calculateWeightedScore(
+      score,
+      subExam.maxScore,
+      subExam.weightPercent
+    );
+
+    if (subExam.examType === 'general_test') {
+      generalTestTotal += weightedScore;
+    } else {
+      subExamTotal += weightedScore;
+    }
+  }
+
+  return subExamTotal + generalTestTotal;
+};
+
+const computeYearAverageForSubject = (
+  studentId: string,
+  subjectId: string,
+  term1Id: string,
+  term2Id: string,
+  subExams: SubExamRow[],
+  markLookup: Map<string, number>
+): number => {
+  if (subExams.length === 0) {
     return 0;
   }
 
-  // Get all subjects for the class's grade
-  const subjects = await prisma.subject.findMany({
-    where: { gradeId: classRecord.gradeId },
-  });
+  const marksForTerm = (termId: string) => {
+    const bySubExam = new Map<string, number>();
+    for (const subExam of subExams) {
+      bySubExam.set(
+        subExam.id,
+        markLookup.get(markKey(studentId, subjectId, termId, subExam.id)) ?? 0
+      );
+    }
+    return bySubExam;
+  };
 
+  const term1Total = computeTermTotalFromMarks(subExams, marksForTerm(term1Id));
+  const term2Total = computeTermTotalFromMarks(subExams, marksForTerm(term2Id));
+
+  return (term1Total + term2Total) / 2;
+};
+
+const computeStudentYearlyAverageBulk = (
+  studentId: string,
+  gradeId: string | null,
+  term1Id: string,
+  term2Id: string,
+  subjectsByGradeId: Map<string, Array<{ id: string }>>,
+  subExamsBySubjectId: Map<string, SubExamRow[]>,
+  markLookup: Map<string, number>
+): number => {
+  if (!gradeId) {
+    return 0;
+  }
+
+  const subjects = subjectsByGradeId.get(gradeId) ?? [];
   if (subjects.length === 0) {
     return 0;
   }
 
-  // Calculate yearly average for each subject
-  const subjectAverages = await Promise.all(
-    subjects.map(async (subject: { id: string }) => {
-      try {
-        const yearResult = await calculateYearAverage(studentId, subject.id);
-        return yearResult.yearAverage;
-      } catch {
-        return 0;
-      }
-    })
+  const subjectAverages = subjects.map((subject) =>
+    computeYearAverageForSubject(
+      studentId,
+      subject.id,
+      term1Id,
+      term2Id,
+      subExamsBySubjectId.get(subject.id) ?? [],
+      markLookup
+    )
   );
 
-  // Calculate overall average
-  const overallAverage =
-    subjectAverages.length > 0
-      ? subjectAverages.reduce((sum, avg) => sum + avg, 0) / subjectAverages.length
-      : 0;
-
-  return overallAverage;
+  return (
+    subjectAverages.reduce((sum, avg) => sum + avg, 0) / subjectAverages.length
+  );
 };
 
-/**
- * Get promotion preview before execution
- */
-export const getPromotionPreview = async (): Promise<PromotionPreview> => {
-  // Check if Term 2 exists and is closed
-  const term2 = await prisma.term.findFirst({
-    where: { name: 'Term 2', academicYear: { status: 'ACTIVE' } },
-  });
+const buildStudentOutcome = (
+  sc: {
+    studentId: string;
+    classId: string;
+    class: { name: string; grade: { id: string; name: string } | null };
+    student: { firstName: string; lastName: string };
+  },
+  overallAverage: number,
+  threshold: number,
+  highestGrade: { id: string } | null,
+  nextGradeById: Map<string, { id: string; name: string }>
+): PromotionPreviewStudent => {
+  const currentGrade = sc.class.grade;
+  let outcome: 'PASS' | 'REPEAT' | 'GRADUATE';
+  let nextGradeId: string | null = null;
+  let nextGradeName: string | null = null;
+  let nextClassName: string | null = null;
 
-  if (!term2) {
-    throw new NotFoundError('Term 2 not found');
+  if (!currentGrade) {
+    outcome = 'REPEAT';
+  } else if (highestGrade && currentGrade.id === highestGrade.id) {
+    outcome = 'GRADUATE';
+  } else if (overallAverage >= threshold) {
+    outcome = 'PASS';
+    const nextGrade = nextGradeById.get(currentGrade.id);
+    if (nextGrade) {
+      nextGradeId = nextGrade.id;
+      nextGradeName = nextGrade.name;
+      const currentClassParts = sc.class.name.split(' ');
+      if (currentClassParts.length >= 2) {
+        const section = currentClassParts.slice(1).join(' ');
+        nextClassName = `${nextGrade.name} ${section}`;
+      } else {
+        nextClassName = nextGrade.name;
+      }
+    } else {
+      outcome = 'GRADUATE';
+    }
+  } else {
+    outcome = 'REPEAT';
+    nextGradeId = currentGrade.id;
+    nextGradeName = currentGrade.name;
+    nextClassName = sc.class.name;
   }
 
-  const canPromote = term2.status === 'CLOSED';
+  return {
+    studentId: sc.studentId,
+    firstName: sc.student.firstName,
+    lastName: sc.student.lastName,
+    currentClassId: sc.classId,
+    currentClassName: sc.class.name,
+    currentGradeId: currentGrade?.id || null,
+    currentGradeName: currentGrade?.name || null,
+    overallAverage,
+    outcome,
+    nextGradeId,
+    nextGradeName,
+    nextClassName,
+  };
+};
 
-  // Get active academic year
-  const activeYear = await getActiveAcademicYear();
-
-  if (!activeYear) {
-    return {
-      canPromote: false,
-      term2Status: term2.status,
-      activeAcademicYear: null,
-      students: [],
-      summary: {
-        total: 0,
-        passing: 0,
-        repeating: 0,
-        graduating: 0,
-      },
-    };
-  }
-
-  // Get all active students in the active academic year
+const calculateStudentOutcomes = async (
+  activeYearId: string,
+  term1Id: string,
+  term2Id: string
+): Promise<{
+  students: PromotionPreviewStudent[];
+  classes: PromotionPreviewClass[];
+  summary: PromotionPreview['summary'];
+}> => {
   const activeStudentClasses = await prisma.studentClass.findMany({
     where: {
       class: {
-        academicYearId: activeYear.id,
+        academicYearId: activeYearId,
       },
-      endDate: null, // Active assignments only
+      endDate: null,
     },
     include: {
       student: {
@@ -141,118 +313,329 @@ export const getPromotionPreview = async (): Promise<PromotionPreview> => {
     },
   });
 
-  // Get promotion threshold
-  const thresholdSetting = await getSetting('promotionThreshold');
+  if (activeStudentClasses.length === 0) {
+    return {
+      students: [],
+      classes: [],
+      summary: emptySummary(),
+    };
+  }
+
+  const gradeIds = [
+    ...new Set(
+      activeStudentClasses
+        .map((sc) => sc.class.grade?.id)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
+
+  const studentIds = activeStudentClasses.map((sc) => sc.studentId);
+
+  const [thresholdSetting, highestGrade, allGrades, subjects, subExams, marks] =
+    await Promise.all([
+      getSetting('promotionThreshold'),
+      getHighestGrade(),
+      prisma.grade.findMany({ orderBy: { order: 'asc' } }),
+      gradeIds.length > 0
+        ? prisma.subject.findMany({ where: { gradeId: { in: gradeIds } } })
+        : Promise.resolve([]),
+      gradeIds.length > 0
+        ? prisma.subExam.findMany({ where: { gradeId: { in: gradeIds } } })
+        : Promise.resolve([]),
+      prisma.mark.findMany({
+        where: {
+          studentId: { in: studentIds },
+          termId: { in: [term1Id, term2Id] },
+        },
+        select: {
+          studentId: true,
+          subjectId: true,
+          termId: true,
+          subExamId: true,
+          score: true,
+        },
+      }),
+    ]);
+
   const threshold = parseFloat(thresholdSetting.value);
 
-  // Get highest grade
-  const highestGrade = await getHighestGrade();
+  const nextGradeById = new Map<string, { id: string; name: string }>();
+  for (let i = 0; i < allGrades.length; i++) {
+    const current = allGrades[i];
+    const next = allGrades[i + 1];
+    if (next && !current.isHighest) {
+      nextGradeById.set(current.id, { id: next.id, name: next.name });
+    }
+  }
 
-  // Calculate outcomes for each student
-  const students: PromotionPreviewStudent[] = await Promise.all(
-    activeStudentClasses.map(async (sc: { studentId: string; classId: string; class: { name: string; grade: { id: string; name: string } | null }; student: { firstName: string; lastName: string } }) => {
-      const overallAverage = await calculateStudentYearlyAverage(
-        sc.studentId,
-        sc.classId
-      );
+  const subjectsByGradeId = new Map<string, Array<{ id: string }>>();
+  for (const subject of subjects) {
+    const list = subjectsByGradeId.get(subject.gradeId) ?? [];
+    list.push({ id: subject.id });
+    subjectsByGradeId.set(subject.gradeId, list);
+  }
 
-      const currentGrade = sc.class.grade;
-      let outcome: 'PASS' | 'REPEAT' | 'GRADUATE';
-      let nextGradeId: string | null = null;
-      let nextGradeName: string | null = null;
-      let nextClassName: string | null = null;
+  const subExamsBySubjectId = new Map<string, SubExamRow[]>();
+  for (const subExam of subExams) {
+    const list = subExamsBySubjectId.get(subExam.subjectId) ?? [];
+    list.push(subExam);
+    subExamsBySubjectId.set(subExam.subjectId, list);
+  }
 
-      // Determine outcome
-      if (!currentGrade) {
-        // No grade assigned, treat as repeat
-        outcome = 'REPEAT';
-        nextGradeId = null;
-        nextGradeName = null;
-      } else if (highestGrade && currentGrade.id === highestGrade.id) {
-        // At highest grade, graduate
-        outcome = 'GRADUATE';
-        nextGradeId = null;
-        nextGradeName = null;
-      } else if (overallAverage >= threshold) {
-        // Pass - move to next grade
-        outcome = 'PASS';
-        const nextGrade = await getNextGrade(currentGrade.id);
-        if (nextGrade) {
-          nextGradeId = nextGrade.id;
-          nextGradeName = nextGrade.name;
-          // Generate next class name (e.g., "Grade 2A" -> "Grade 3A")
-          // This is a simple approach - in production, you might want more sophisticated logic
-          const currentClassParts = sc.class.name.split(' ');
-          if (currentClassParts.length >= 2) {
-            const section = currentClassParts.slice(1).join(' ');
-            nextClassName = `${nextGrade.name} ${section}`;
-          } else {
-            nextClassName = nextGrade.name;
-          }
-        } else {
-          outcome = 'GRADUATE';
-        }
-      } else {
-        // Repeat - stay in same grade
-        outcome = 'REPEAT';
-        nextGradeId = currentGrade.id;
-        nextGradeName = currentGrade.name;
-        // Keep same class name structure
-        nextClassName = sc.class.name;
-      }
+  const markLookup = new Map<string, number>();
+  for (const mark of marks) {
+    markLookup.set(
+      markKey(mark.studentId, mark.subjectId, mark.termId, mark.subExamId),
+      mark.score
+    );
+  }
 
-      return {
-        studentId: sc.studentId,
-        firstName: sc.student.firstName,
-        lastName: sc.student.lastName,
-        currentClassId: sc.classId,
-        currentClassName: sc.class.name,
-        currentGradeId: currentGrade?.id || null,
-        currentGradeName: currentGrade?.name || null,
-        overallAverage,
-        outcome,
-        nextGradeId,
-        nextGradeName,
-        nextClassName,
-      };
-    })
-  );
+  const students = activeStudentClasses.map((sc) => {
+    const overallAverage = computeStudentYearlyAverageBulk(
+      sc.studentId,
+      sc.class.grade?.id ?? null,
+      term1Id,
+      term2Id,
+      subjectsByGradeId,
+      subExamsBySubjectId,
+      markLookup
+    );
 
-  // Calculate summary
-  const summary = {
-    total: students.length,
-    passing: students.filter((s) => s.outcome === 'PASS').length,
-    repeating: students.filter((s) => s.outcome === 'REPEAT').length,
-    graduating: students.filter((s) => s.outcome === 'GRADUATE').length,
-  };
+    return buildStudentOutcome(
+      sc,
+      overallAverage,
+      threshold,
+      highestGrade,
+      nextGradeById
+    );
+  });
+
+  const classCounts = new Map<string, { id: string; name: string; count: number }>();
+  for (const student of students) {
+    const existing = classCounts.get(student.currentClassId);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      classCounts.set(student.currentClassId, {
+        id: student.currentClassId,
+        name: student.currentClassName,
+        count: 1,
+      });
+    }
+  }
+
+  const classes = [...classCounts.values()]
+    .map(({ id, name, count }) => ({
+      id,
+      name,
+      studentCount: count,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return {
-    canPromote,
-    term2Status: term2.status,
-    activeAcademicYear: {
-      id: activeYear.id,
-      name: activeYear.name,
+    students,
+    classes,
+    summary: {
+      total: students.length,
+      passing: students.filter((s) => s.outcome === 'PASS').length,
+      repeating: students.filter((s) => s.outcome === 'REPEAT').length,
+      graduating: students.filter((s) => s.outcome === 'GRADUATE').length,
     },
+  };
+};
+
+export const calculateStudentYearlyAverage = async (
+  studentId: string,
+  classId: string
+): Promise<number> => {
+  const classRecord = await prisma.class.findUnique({
+    where: { id: classId },
+    select: { gradeId: true, academicYearId: true },
+  });
+
+  if (!classRecord?.gradeId || !classRecord.academicYearId) {
+    return 0;
+  }
+
+  const [term1, term2] = await Promise.all([
+    prisma.term.findFirst({
+      where: { name: 'Term 1', academicYearId: classRecord.academicYearId },
+    }),
+    prisma.term.findFirst({
+      where: { name: 'Term 2', academicYearId: classRecord.academicYearId },
+    }),
+  ]);
+
+  if (!term1 || !term2) {
+    return 0;
+  }
+
+  const { students } = await calculateStudentOutcomes(
+    classRecord.academicYearId,
+    term1.id,
+    term2.id
+  );
+
+  return students.find((s) => s.studentId === studentId)?.overallAverage ?? 0;
+};
+
+const createDefaultTermsForYear = async (
+  tx: Prisma.TransactionClient,
+  academicYearId: string,
+  startDate: Date,
+  endDate: Date | null
+): Promise<string[]> => {
+  const termsCreated: string[] = [];
+  const yearEnd = endDate ?? new Date(startDate.getFullYear(), 11, 31);
+  const midpoint = new Date(
+    startDate.getTime() + (yearEnd.getTime() - startDate.getTime()) / 2
+  );
+  const term2Start = new Date(midpoint);
+  term2Start.setDate(term2Start.getDate() + 1);
+
+  const termDefinitions = [
+    {
+      name: 'Term 1',
+      startDate,
+      endDate: midpoint,
+    },
+    {
+      name: 'Term 2',
+      startDate: term2Start,
+      endDate: yearEnd,
+    },
+  ];
+
+  for (const termDef of termDefinitions) {
+    const existing = await tx.term.findFirst({
+      where: {
+        name: termDef.name,
+        academicYearId,
+      },
+    });
+
+    if (!existing) {
+      await tx.term.create({
+        data: {
+          name: termDef.name,
+          academicYearId,
+          startDate: termDef.startDate,
+          endDate: termDef.endDate,
+          status: 'OPEN',
+        },
+      });
+      termsCreated.push(termDef.name);
+    }
+  }
+
+  return termsCreated;
+};
+
+/**
+ * Get promotion preview before execution
+ */
+export const getPromotionPreview = async (
+  options: GetPromotionPreviewOptions = {}
+): Promise<PromotionPreview> => {
+  const { classId, includeStudents = true } = options;
+  const activeYear = await getActiveAcademicYear();
+
+  if (!activeYear) {
+    return buildPreviewResponse({
+      canPromote: false,
+      blockers: ['NO_ACTIVE_YEAR'],
+    });
+  }
+
+  const nextYearInfo = computeNextAcademicYearName(activeYear.name);
+  const blockers: PromotionBlocker[] = [];
+
+  if (!nextYearInfo) {
+    blockers.push('INVALID_YEAR_FORMAT');
+  }
+
+  const term1 = await prisma.term.findFirst({
+    where: {
+      name: 'Term 1',
+      academicYearId: activeYear.id,
+    },
+  });
+
+  const term2 = await prisma.term.findFirst({
+    where: {
+      name: 'Term 2',
+      academicYearId: activeYear.id,
+    },
+  });
+
+  if (!term1) {
+    blockers.push('TERM1_NOT_FOUND');
+  }
+
+  if (!term2) {
+    blockers.push('TERM2_NOT_FOUND');
+  } else if (term2.status !== 'CLOSED') {
+    blockers.push('TERM2_NOT_CLOSED');
+  }
+
+  const activeAcademicYear = {
+    id: activeYear.id,
+    name: activeYear.name,
+  };
+
+  if (blockers.includes('TERM1_NOT_FOUND') || blockers.includes('TERM2_NOT_FOUND')) {
+    return buildPreviewResponse({
+      canPromote: false,
+      blockers,
+      term1Status: term1?.status,
+      term2Status: term2?.status,
+      nextAcademicYearName: nextYearInfo?.nextYearName,
+      activeAcademicYear,
+    });
+  }
+
+  const { students: allStudents, classes, summary } = await calculateStudentOutcomes(
+    activeYear.id,
+    term1!.id,
+    term2!.id
+  );
+
+  let students = allStudents;
+  if (classId) {
+    students = allStudents.filter((s) => s.currentClassId === classId);
+  }
+  if (!includeStudents) {
+    students = [];
+  }
+
+  return buildPreviewResponse({
+    canPromote: blockers.length === 0,
+    blockers,
+    term1Status: term1?.status,
+    term2Status: term2?.status,
+    nextAcademicYearName: nextYearInfo?.nextYearName,
+    activeAcademicYear,
+    classes,
     students,
     summary,
-  };
+  });
 };
 
 /**
  * Execute promotion for all students
  */
-export const promoteStudents = async (): Promise<{
-  message: string;
-  promoted: number;
-  repeated: number;
-  graduated: number;
-}> => {
-  // Get preview to validate
-  const preview = await getPromotionPreview();
+export const promoteStudents = async (): Promise<PromotionResult> => {
+  const preview = await getPromotionPreview({ includeStudents: true });
+
+  if (preview.blockers.length > 0) {
+    throw new BadRequestError(
+      `Cannot promote students: ${preview.blockers.join(', ')}`
+    );
+  }
 
   if (!preview.canPromote) {
     throw new BadRequestError(
-      'Cannot promote students. Term 2 must be closed first.'
+      'Cannot promote students. All prerequisites must be met first.'
     );
   }
 
@@ -260,7 +643,6 @@ export const promoteStudents = async (): Promise<{
     throw new BadRequestError('No active academic year found');
   }
 
-  // Get active academic year
   const activeYear = await prisma.academicYear.findUnique({
     where: { id: preview.activeAcademicYear.id },
   });
@@ -269,169 +651,216 @@ export const promoteStudents = async (): Promise<{
     throw new NotFoundError('Active academic year not found');
   }
 
-  // Create next academic year (e.g., "2024-2025" -> "2025-2026")
-  const currentYearParts = activeYear.name.split('-');
-  if (currentYearParts.length !== 2) {
-    throw new BadRequestError('Invalid academic year format');
+  const nextYearInfo = computeNextAcademicYearName(activeYear.name);
+  if (!nextYearInfo) {
+    throw new BadRequestError('Invalid academic year format. Expected YYYY-YYYY');
   }
 
-  const startYear = parseInt(currentYearParts[0]);
-  const endYear = parseInt(currentYearParts[1]);
+  const { nextYearName, nextYearStartDate, nextYearEndDate } = nextYearInfo;
 
-  const nextYearName = `${startYear + 1}-${endYear + 1}`;
-  const nextYearStartDate = new Date(startYear + 1, 0, 1); // January 1st
-  const nextYearEndDate = new Date(endYear + 1, 11, 31); // December 31st
-
-  // Check if next academic year already exists
-  let nextAcademicYear = await prisma.academicYear.findUnique({
+  const existingNextYear = await prisma.academicYear.findUnique({
     where: { name: nextYearName },
+    include: {
+      classes: {
+        select: { id: true },
+      },
+    },
   });
 
-  if (!nextAcademicYear) {
-    nextAcademicYear = await createAcademicYear({
-      name: nextYearName,
-      startDate: nextYearStartDate,
-      endDate: nextYearEndDate,
+  if (existingNextYear && preview.students.length > 0) {
+    const studentIds = preview.students.map((s) => s.studentId);
+    const existingAssignments = await prisma.studentClass.findFirst({
+      where: {
+        studentId: { in: studentIds },
+        endDate: null,
+        class: {
+          academicYearId: existingNextYear.id,
+        },
+      },
     });
+
+    if (existingAssignments) {
+      throw new BadRequestError(
+        'Promotion already executed for this cohort. Students already have active records in the next academic year.'
+      );
+    }
   }
 
-  // Get all grades to create classes
   const grades = await prisma.grade.findMany({
     orderBy: { order: 'asc' },
   });
 
-  // Create classes for next academic year if they don't exist
-  const classMap = new Map<string, string>(); // gradeId -> classId
-
-  for (const grade of grades) {
-    // Check if class already exists for this grade and year
-    const existingClass = await prisma.class.findFirst({
-      where: {
-        gradeId: grade.id,
-        academicYearId: nextAcademicYear.id,
-      },
+  const result = await prisma.$transaction(async (tx) => {
+    let nextAcademicYear = await tx.academicYear.findUnique({
+      where: { name: nextYearName },
     });
 
-    if (existingClass) {
-      classMap.set(grade.id, existingClass.id);
-    } else {
-      // Create new class (simple naming: "Grade 1", "Grade 2", etc.)
-      // In production, you might want more sophisticated class creation
-      const newClass = await prisma.class.create({
+    if (!nextAcademicYear) {
+      nextAcademicYear = await tx.academicYear.create({
         data: {
-          name: grade.name,
-          description: `${grade.name} - ${nextYearName}`,
+          name: nextYearName,
+          startDate: nextYearStartDate,
+          endDate: nextYearEndDate,
+          status: 'CLOSED',
+        },
+      });
+    }
+
+    const classMap = new Map<string, string>();
+
+    for (const grade of grades) {
+      const existingClass = await tx.class.findFirst({
+        where: {
           gradeId: grade.id,
           academicYearId: nextAcademicYear.id,
         },
       });
-      classMap.set(grade.id, newClass.id);
-    }
-  }
 
-  // Process each student
-  let promoted = 0;
-  let repeated = 0;
-  let graduated = 0;
-
-  for (const studentPreview of preview.students) {
-    // Find current student class record
-    const currentStudentClass = await prisma.studentClass.findFirst({
-      where: {
-        studentId: studentPreview.studentId,
-        classId: studentPreview.currentClassId,
-        endDate: null,
-      },
-    });
-
-    if (!currentStudentClass) {
-      continue; // Skip if no active assignment found
+      if (existingClass) {
+        classMap.set(grade.id, existingClass.id);
+      } else {
+        const newClass = await tx.class.create({
+          data: {
+            name: grade.name,
+            description: `${grade.name} - ${nextYearName}`,
+            gradeId: grade.id,
+            academicYearId: nextAcademicYear.id,
+          },
+        });
+        classMap.set(grade.id, newClass.id);
+      }
     }
 
-    // Close current student class record
-    let promotionStatus: 'PROMOTED' | 'REPEATED' | 'GRADUATED' | null = null;
+    let promoted = 0;
+    let repeated = 0;
+    let graduated = 0;
+    const now = new Date();
 
-    if (studentPreview.outcome === 'PASS') {
-      promotionStatus = 'PROMOTED';
-      promoted++;
-    } else if (studentPreview.outcome === 'REPEAT') {
-      promotionStatus = 'REPEATED';
-      repeated++;
-    } else if (studentPreview.outcome === 'GRADUATE') {
-      promotionStatus = 'GRADUATED';
-      graduated++;
-      // Don't create new student class for graduates
-      await prisma.studentClass.update({
+    for (const studentPreview of preview.students) {
+      const currentStudentClass = await tx.studentClass.findFirst({
+        where: {
+          studentId: studentPreview.studentId,
+          classId: studentPreview.currentClassId,
+          endDate: null,
+        },
+      });
+
+      if (!currentStudentClass) {
+        continue;
+      }
+
+      let promotionStatus: 'PROMOTED' | 'REPEATED' | 'GRADUATED' | null = null;
+
+      if (studentPreview.outcome === 'PASS') {
+        promotionStatus = 'PROMOTED';
+        promoted++;
+      } else if (studentPreview.outcome === 'REPEAT') {
+        promotionStatus = 'REPEATED';
+        repeated++;
+      } else if (studentPreview.outcome === 'GRADUATE') {
+        promotionStatus = 'GRADUATED';
+        graduated++;
+        await tx.studentClass.update({
+          where: { id: currentStudentClass.id },
+          data: {
+            endDate: now,
+            promotionStatus,
+          },
+        });
+        continue;
+      }
+
+      await tx.studentClass.update({
         where: { id: currentStudentClass.id },
         data: {
-          endDate: new Date(),
+          endDate: now,
           promotionStatus,
         },
       });
-      continue;
-    }
 
-    // Update current record
-    await prisma.studentClass.update({
-      where: { id: currentStudentClass.id },
-      data: {
-        endDate: new Date(),
-        promotionStatus,
-      },
-    });
+      if (studentPreview.nextGradeId && classMap.has(studentPreview.nextGradeId)) {
+        let targetClassId = classMap.get(studentPreview.nextGradeId)!;
 
-    // Create new student class record for next year (if not graduating)
-    if (studentPreview.nextGradeId && classMap.has(studentPreview.nextGradeId)) {
-      const nextClassId = classMap.get(studentPreview.nextGradeId)!;
-
-      // Find or create class with the specific name if needed
-      let targetClassId = nextClassId;
-
-      // If we have a specific next class name, try to find or create it
-      if (studentPreview.nextClassName) {
-        const specificClass = await prisma.class.findFirst({
-          where: {
-            academicYearId: nextAcademicYear.id,
-            gradeId: studentPreview.nextGradeId,
-            name: studentPreview.nextClassName,
-          },
-        });
-
-        if (specificClass) {
-          targetClassId = specificClass.id;
-        } else {
-          // Create class with specific name
-          const newClass = await prisma.class.create({
-            data: {
-              name: studentPreview.nextClassName,
-              description: `${studentPreview.nextClassName} - ${nextYearName}`,
-              gradeId: studentPreview.nextGradeId,
+        if (studentPreview.nextClassName) {
+          const specificClass = await tx.class.findFirst({
+            where: {
               academicYearId: nextAcademicYear.id,
+              gradeId: studentPreview.nextGradeId,
+              name: studentPreview.nextClassName,
             },
           });
-          targetClassId = newClass.id;
-        }
-      }
 
-      await prisma.studentClass.create({
-        data: {
-          studentId: studentPreview.studentId,
-          classId: targetClassId,
-          reason:
-            studentPreview.outcome === 'PASS'
-              ? 'Promoted to next grade'
-              : 'Repeated same grade',
-          startDate: new Date(),
-        },
-      });
+          if (specificClass) {
+            targetClassId = specificClass.id;
+          } else {
+            const newClass = await tx.class.create({
+              data: {
+                name: studentPreview.nextClassName,
+                description: `${studentPreview.nextClassName} - ${nextYearName}`,
+                gradeId: studentPreview.nextGradeId,
+                academicYearId: nextAcademicYear.id,
+              },
+            });
+            targetClassId = newClass.id;
+          }
+        }
+
+        await tx.studentClass.create({
+          data: {
+            studentId: studentPreview.studentId,
+            classId: targetClassId,
+            reason:
+              studentPreview.outcome === 'PASS'
+                ? 'Promoted to next grade'
+                : 'Repeated same grade',
+            startDate: now,
+          },
+        });
+      }
     }
-  }
+
+    await tx.academicYear.update({
+      where: { id: activeYear.id },
+      data: { status: 'CLOSED' },
+    });
+
+    await tx.academicYear.updateMany({
+      where: {
+        status: 'ACTIVE',
+        id: { not: nextAcademicYear.id },
+      },
+      data: { status: 'CLOSED' },
+    });
+
+    const activatedYear = await tx.academicYear.update({
+      where: { id: nextAcademicYear.id },
+      data: { status: 'ACTIVE' },
+    });
+
+    const termsCreated = await createDefaultTermsForYear(
+      tx,
+      activatedYear.id,
+      activatedYear.startDate,
+      activatedYear.endDate
+    );
+
+    return {
+      promoted,
+      repeated,
+      graduated,
+      previousAcademicYear: { id: activeYear.id, name: activeYear.name },
+      newAcademicYear: { id: activatedYear.id, name: activatedYear.name },
+      termsCreated,
+    };
+  });
 
   return {
     message: 'Promotion completed successfully',
-    promoted,
-    repeated,
-    graduated,
+    promoted: result.promoted,
+    repeated: result.repeated,
+    graduated: result.graduated,
+    previousAcademicYear: result.previousAcademicYear,
+    newAcademicYear: result.newAcademicYear,
+    termsCreated: result.termsCreated,
   };
 };
-

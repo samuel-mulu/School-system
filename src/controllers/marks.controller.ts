@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import * as marksService from "../services/marks.service.js";
-import { sendSuccess } from "../utils/responses.js";
+import { sendSuccess, sendError } from "../utils/responses.js";
 
 export const createMark = async (
   req: Request,
@@ -104,7 +104,8 @@ export const recordMark = async (
     const { studentId, subExamId } = req.params;
     const { termId, score, notes } = req.body;
     if (!termId) {
-      return res.status(400).json({ error: 'termId is required in request body' });
+      sendError(res, 'termId is required in request body', 400);
+      return;
     }
     const mark = await marksService.recordMark(
       studentId,
@@ -130,7 +131,8 @@ export const recordBulkMarks = async (
     const { subExamId } = req.params;
     const { termId, marksData } = req.body;
     if (!termId) {
-      return res.status(400).json({ error: 'termId is required in request body' });
+      sendError(res, 'termId is required in request body', 400);
+      return;
     }
     const results = await marksService.recordBulkMarks(
       subExamId,

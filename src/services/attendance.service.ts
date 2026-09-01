@@ -587,9 +587,6 @@ export const getClassAttendanceSummary = async (
     },
   });
 
-  // Get total number of students in the class
-  const totalStudents = classRecord.studentClasses.length;
-
   // Group by date and calculate statistics
   const dateMap = new Map<
     string,

@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import * as classService from "../services/class.service.js";
-import { sendSuccess } from "../utils/responses.js";
+import { sendSuccess, sendError } from "../utils/responses.js";
 import { prisma } from "../config/db.js";
 
 export const createClass = async (
@@ -95,13 +95,15 @@ export const createSubject = async (
         select: { gradeId: true },
       });
       if (!classRecord || !classRecord.gradeId) {
-        return res.status(400).json({ error: 'Class does not have a grade assigned' });
+        sendError(res, 'Class does not have a grade assigned', 400);
+        return;
       }
       gradeId = classRecord.gradeId;
     }
     
     if (!gradeId) {
-      return res.status(400).json({ error: 'gradeId or classId is required' });
+      sendError(res, 'gradeId or classId is required', 400);
+      return;
     }
     
     const subject = await classService.createSubject(

@@ -96,15 +96,10 @@ export const getTermById = async (id: string) => {
   const term = await prisma.term.findUnique({
     where: { id },
     include: {
-      subExams: {
-        include: {
-          subject: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-            },
-          },
+      academicYear: {
+        select: {
+          id: true,
+          name: true,
         },
       },
     },
@@ -115,6 +110,84 @@ export const getTermById = async (id: string) => {
   }
 
   return term;
+};
+
+export const updateTerm = async (
+  id: string,
+  data: {
+    name?: string;
+    startDate?: Date;
+    endDate?: Date | null;
+  }
+) => {
+  const term = await prisma.term.findUnique({
+    where: { id },
+    include: { academicYear: true },
+  });
+
+  if (!term) {
+    throw new NotFoundError('Term not found');
+  }
+
+  const name = data.name?.trim() ?? term.name;
+  const startDate = data.startDate ?? term.startDate;
+  const endDate =
+    data.endDate !== undefined ? data.endDate : term.endDate;
+
+  if (name !== term.name) {
+    const duplicate = await prisma.term.findFirst({
+      where: {
+        name,
+        academicYearId: term.academicYearId,
+        id: { not: id },
+      },
+    });
+
+    if (duplicate) {
+      throw new ConflictError(
+        `Term "${name}" already exists for this academic year`
+      );
+    }
+  }
+
+  if (endDate && endDate <= startDate) {
+    throw new BadRequestError('End date must be after start date');
+  }
+
+  if (startDate < term.academicYear.startDate) {
+    throw new BadRequestError(
+      'Term start date must be on or after academic year start date'
+    );
+  }
+
+  if (
+    term.academicYear.endDate &&
+    endDate &&
+    endDate > term.academicYear.endDate
+  ) {
+    throw new BadRequestError(
+      'Term end date must be before or on academic year end date'
+    );
+  }
+
+  const updated = await prisma.term.update({
+    where: { id },
+    data: {
+      name,
+      startDate,
+      endDate,
+    },
+    include: {
+      academicYear: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  return updated;
 };
 
 export const getTermByName = async (name: string, academicYearId?: string) => {

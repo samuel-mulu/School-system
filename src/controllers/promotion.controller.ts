@@ -3,12 +3,17 @@ import * as promotionService from "../services/promotion.service.js";
 import { sendSuccess } from "../utils/responses.js";
 
 export const getPromotionPreview = async (
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
-    const preview = await promotionService.getPromotionPreview();
+    const classId = req.query.classId as string | undefined;
+    const includeStudents = req.query.includeStudents !== 'false';
+    const preview = await promotionService.getPromotionPreview({
+      classId,
+      includeStudents,
+    });
     sendSuccess(res, preview);
   } catch (error) {
     next(error);

@@ -50,6 +50,29 @@ export const getTermById = async (
   }
 };
 
+export const updateTerm = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { name, startDate, endDate } = req.body;
+    const term = await termService.updateTerm(req.params.id, {
+      name,
+      startDate: startDate ? new Date(startDate) : undefined,
+      endDate:
+        endDate === null
+          ? null
+          : endDate
+            ? new Date(endDate)
+            : undefined,
+    });
+    sendSuccess(res, term, 'Term updated successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const closeTerm = async (
   req: Request,
   res: Response,

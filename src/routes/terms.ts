@@ -17,6 +17,14 @@ const createTermSchema = z.object({
   }),
 });
 
+const updateTermSchema = z.object({
+  body: z.object({
+    name: z.string().min(1).optional(),
+    startDate: z.string().datetime().optional(),
+    endDate: z.string().datetime().nullable().optional(),
+  }),
+});
+
 // Routes
 router.post(
   '/',
@@ -29,6 +37,14 @@ router.post(
 router.get('/', authenticate, termController.getTerms);
 
 router.get('/:id', authenticate, termController.getTermById);
+
+router.put(
+  '/:id',
+  authenticate,
+  requireRegistrarOrOwner,
+  validate(updateTermSchema),
+  termController.updateTerm
+);
 
 router.post(
   '/:id/close',

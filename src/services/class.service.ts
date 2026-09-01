@@ -285,8 +285,8 @@ export const deleteClass = async (id: string) => {
 export const createSubject = async (
   gradeId: string,
   data: { name: string; code?: string; description?: string },
-  userId?: string,
-  userRole?: string
+  _userId?: string,
+  _userRole?: string
 ) => {
   const grade = await prisma.grade.findUnique({
     where: { id: gradeId },
@@ -380,8 +380,8 @@ export const getSubjectsByClass = async (
 export const updateSubject = async (
   subjectId: string,
   data: { name?: string; code?: string; description?: string },
-  userId?: string,
-  userRole?: string
+  _userId?: string,
+  _userRole?: string
 ) => {
   const subject = await prisma.subject.findUnique({
     where: { id: subjectId },
@@ -418,8 +418,8 @@ export const updateSubject = async (
 
 export const deleteSubject = async (
   subjectId: string,
-  userId?: string,
-  userRole?: string
+  _userId?: string,
+  _userRole?: string
 ) => {
   const subject = await prisma.subject.findUnique({
     where: { id: subjectId },
