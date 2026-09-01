@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc && prisma generate",
+    "build": "prisma generate && tsc",
     "start": "node dist/server.js",
     "seed": "tsx prisma/seed.ts",
     "prisma:generate": "prisma generate",
@@ -13,7 +13,7 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "lint": "eslint . --ext .ts",
     "test": "jest",
-    "postinstall": "husky install || true"
+    "postinstall": "node -e \"try{require('child_process').execSync('husky install',{stdio:'inherit'})}catch(e){}\""
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -31,8 +31,16 @@
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",
+    "@types/bcrypt": "^6.0.0",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
+    "@types/node": "^25.0.3",
     "@types/qrcode": "^1.5.6",
+    "prisma": "^6.19.1",
+    "typescript": "^5.9.3",
     "bcrypt": "^6.0.0",
     "bwip-js": "^4.8.0",
     "cloudinary": "^2.8.0",
@@ -54,15 +62,9 @@
     "zod": "^4.3.2"
   },
   "devDependencies": {
-    "@types/bcrypt": "^6.0.0",
     "@types/compression": "^1.7.5",
-    "@types/cookie-parser": "^1.4.10",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
     "@types/jest": "^29.5.11",
-    "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.9",
-    "@types/node": "^25.0.3",
     "@types/supertest": "^6.0.2",
     "@typescript-eslint/eslint-plugin": "^7.1.1",
     "@typescript-eslint/parser": "^7.1.1",
@@ -75,12 +77,10 @@
     "lint-staged": "^15.2.2",
     "nodemon": "^3.1.11",
     "prettier": "^3.2.5",
-    "prisma": "^6.19.1",
     "supertest": "^6.3.3",
     "ts-jest": "^29.1.2",
     "ts-node": "^10.9.2",
-    "tsx": "^4.7.0",
-    "typescript": "^5.9.3"
+    "tsx": "^4.7.0"
   },
   "lint-staged": {
     "**/*.ts": [
