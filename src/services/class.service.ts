@@ -84,12 +84,29 @@ export const getClasses = async (filters?: {
   limit?: number;
   userId?: string;
   userRole?: string;
+  academicYearId?: string;
+  gradeId?: string;
 }) => {
   const page = filters?.page || 1;
   const limit = filters?.limit || 50;
   const skip = (page - 1) * limit;
 
   const where: any = {};
+
+  let academicYearId = filters?.academicYearId;
+  if (!academicYearId) {
+    const activeYear = await prisma.academicYear.findFirst({
+      where: { status: "ACTIVE" },
+    });
+    academicYearId = activeYear?.id;
+  }
+  if (academicYearId) {
+    where.academicYearId = academicYearId;
+  }
+
+  if (filters?.gradeId) {
+    where.gradeId = filters.gradeId;
+  }
 
   // If user is a TEACHER, only show classes where they are head teacher
   if (filters?.userRole === 'TEACHER' && filters?.userId) {

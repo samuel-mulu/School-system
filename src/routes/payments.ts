@@ -22,31 +22,65 @@ const optionalUrl = () =>
     z.string().url().optional()
   );
 
+const optionalTrimmedString = () =>
+  z.preprocess(
+    (v) => {
+      if (v === '' || v === null || v === undefined) return undefined;
+      if (typeof v === 'string') {
+        const trimmed = v.trim();
+        return trimmed === '' ? undefined : trimmed;
+      }
+      return v;
+    },
+    z.string().optional()
+  );
+
+const requirePayerNameForMobileBanking = <T extends { paymentMethod?: string; payerName?: string }>(
+  data: T,
+  ctx: z.RefinementCtx
+) => {
+  if (data.paymentMethod === 'mobile_banking' && !data.payerName?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Payer name is required for mobile banking payments',
+      path: ['payerName'],
+    });
+  }
+};
+
 // Validation schemas
 const createPaymentSchema = z.object({
-  body: z.object({
-    studentId: z.string().uuid(),
-    paymentTypeId: z.string().uuid('Payment type ID is required'),
-    month: z.string().regex(/^\d{4}-\d{2}$/, 'Month must be in YYYY-MM format'),
-    year: z.number().int().min(2000).max(3000),
-    paymentMethod: z.string().optional(),
-    notes: z.string().optional(),
-    proofImageUrl: optionalUrl(),
-    transactionNumber: z.string().optional(),
-    amount: z.number().positive().optional(), // Optional for backward compatibility, but will be fetched from PaymentType
-  }),
+  body: z
+    .object({
+      studentId: z.string().uuid(),
+      academicYearId: z.string().uuid('Academic year ID is required'),
+      paymentTypeId: z.string().uuid('Payment type ID is required'),
+      month: z.string().regex(/^\d{4}-\d{2}$/, 'Month must be in YYYY-MM format'),
+      year: z.number().int().min(2000).max(3000),
+      paymentMethod: z.string().optional(),
+      notes: z.string().optional(),
+      proofImageUrl: optionalUrl(),
+      transactionNumber: z.string().optional(),
+      payerName: optionalTrimmedString(),
+      amount: z.number().positive().optional(), // Optional for backward compatibility, but will be fetched from PaymentType
+    })
+    .superRefine(requirePayerNameForMobileBanking),
 });
 
 const createBulkPaymentSchema = z.object({
-  body: z.object({
-    studentId: z.string().uuid(),
-    paymentTypeId: z.string().uuid('Payment type ID is required'),
-    months: z.array(z.string().regex(/^\d{4}-\d{2}$/, 'Month must be in YYYY-MM format')).min(1, 'At least one month must be provided'),
-    paymentMethod: z.string().optional(),
-    notes: z.string().optional(),
-    proofImageUrl: optionalUrl(),
-    transactionNumber: z.string().optional(),
-  }),
+  body: z
+    .object({
+      studentId: z.string().uuid(),
+      academicYearId: z.string().uuid('Academic year ID is required'),
+      paymentTypeId: z.string().uuid('Payment type ID is required'),
+      months: z.array(z.string().regex(/^\d{4}-\d{2}$/, 'Month must be in YYYY-MM format')).min(1, 'At least one month must be provided'),
+      paymentMethod: z.string().optional(),
+      notes: z.string().optional(),
+      proofImageUrl: optionalUrl(),
+      transactionNumber: z.string().optional(),
+      payerName: optionalTrimmedString(),
+    })
+    .superRefine(requirePayerNameForMobileBanking),
 });
 
 const confirmPaymentSchema = z.object({
@@ -55,6 +89,7 @@ const confirmPaymentSchema = z.object({
     paymentMethod: z.string().optional(),
     proofImageUrl: optionalUrl(),
     transactionNumber: z.string().optional(),
+    payerName: optionalTrimmedString(),
   }),
 });
 
@@ -65,6 +100,7 @@ const confirmBulkPaymentsSchema = z.object({
     paymentMethod: z.string().optional(),
     proofImageUrl: optionalUrl(),
     transactionNumber: z.string().optional(),
+    payerName: optionalTrimmedString(),
   }),
 });
 

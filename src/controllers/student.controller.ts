@@ -29,12 +29,15 @@ export const getStudents = async (
       search: req.query.search as string,
       classId: req.query.classId as string,
       gradeId: req.query.gradeId as string,
+      academicYearId: req.query.academicYearId as string,
       page: req.query.page ? parseInt(req.query.page as string) : undefined,
       limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
       month: req.query.month as string,
       year: req.query.year ? parseInt(req.query.year as string) : undefined,
       userId: req.user?.userId,
       userRole: req.user?.role,
+      excludeGraduated:
+        req.query.excludeGraduated === "false" ? false : undefined,
     };
     const result = await studentService.getStudents(filters);
     sendSuccess(res, result);
@@ -192,6 +195,25 @@ export const uploadStudentImage = async (
       },
       "Image uploaded successfully",
     );
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getGraduates = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const filters = {
+      academicYearId: req.query.academicYearId as string,
+      search: req.query.search as string,
+      page: req.query.page ? parseInt(req.query.page as string) : undefined,
+      limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
+    };
+    const result = await studentService.getGraduates(filters);
+    sendSuccess(res, result);
   } catch (error) {
     next(error);
   }

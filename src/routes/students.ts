@@ -95,6 +95,13 @@ router.post(
 
 router.get("/", authenticate, studentController.getStudents);
 
+router.get(
+  "/graduates",
+  authenticate,
+  requireRegistrarOrOwner,
+  studentController.getGraduates,
+);
+
 router.post(
   "/transfer/bulk",
   authenticate,

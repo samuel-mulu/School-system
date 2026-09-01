@@ -93,6 +93,7 @@ model AcademicYear {
   updatedAt DateTime           @updatedAt
   classes   Class[]
   terms     Term[]
+  payments  Payment[]
 
   @@index([status])
   @@index([name])
@@ -282,6 +283,7 @@ model PaymentType {
 model Payment {
   id                String        @id @default(uuid())
   studentId         String
+  academicYearId    String?
   amount            Float
   paymentTypeId     String?
   month             String
@@ -292,15 +294,18 @@ model Payment {
   notes             String?
   proofImageUrl     String?
   transactionNumber String?
+  payerName         String?
   receiptId         String?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
+  academicYear      AcademicYear? @relation(fields: [academicYearId], references: [id])
   paymentType       PaymentType?  @relation(fields: [paymentTypeId], references: [id])
   receipt           Receipt?      @relation(fields: [receiptId], references: [id])
   student           Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
-  @@unique([studentId, month, year])
+  @@unique([studentId, academicYearId, month])
   @@index([studentId])
+  @@index([academicYearId])
   @@index([status])
   @@index([month, year])
   @@index([paymentTypeId])
@@ -327,6 +332,7 @@ enum UserRole {
 enum ClassStatus {
   new
   assigned
+  graduated
 }
 
 enum PaymentStatus {

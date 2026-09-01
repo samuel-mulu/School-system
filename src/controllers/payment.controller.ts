@@ -38,6 +38,7 @@ export const getPayments = async (
   try {
     const filters = {
       studentId: req.query.studentId as string,
+      academicYearId: req.query.academicYearId as string,
       status: req.query.status as any,
       month: req.query.month as string,
       year: req.query.year ? parseInt(req.query.year as string) : undefined,
@@ -71,13 +72,14 @@ export const confirmPayment = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { paymentDate, paymentMethod, proofImageUrl, transactionNumber } = req.body;
+    const { paymentDate, paymentMethod, proofImageUrl, transactionNumber, payerName } = req.body;
     const result = await paymentService.confirmPayment(
       req.params.id,
       paymentDate ? new Date(paymentDate) : undefined,
       paymentMethod,
       proofImageUrl,
-      transactionNumber
+      transactionNumber,
+      payerName
     );
     sendSuccess(res, result, 'Payment confirmed successfully');
   } catch (error) {
@@ -91,7 +93,7 @@ export const confirmBulkPayments = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const { paymentIds, paymentDate, paymentMethod, proofImageUrl, transactionNumber } = req.body;
+    const { paymentIds, paymentDate, paymentMethod, proofImageUrl, transactionNumber, payerName } = req.body;
     if (!Array.isArray(paymentIds) || paymentIds.length === 0) {
       return next(new Error('paymentIds array is required'));
     }
@@ -100,7 +102,8 @@ export const confirmBulkPayments = async (
       paymentDate ? new Date(paymentDate) : undefined,
       paymentMethod,
       proofImageUrl,
-      transactionNumber
+      transactionNumber,
+      payerName
     );
     sendSuccess(res, result, `Successfully confirmed ${result.payments.length} payment${result.payments.length !== 1 ? 's' : ''} with receipt ${result.receipt.receiptNumber}`);
   } catch (error) {

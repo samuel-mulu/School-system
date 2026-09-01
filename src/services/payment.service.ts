@@ -4,6 +4,7 @@ import { BadRequestError, ConflictError, NotFoundError } from "../utils/errors.j
 
 interface CreatePaymentData {
   studentId: string;
+  academicYearId: string;
   paymentTypeId: string; // Required: payment type ID instead of amount
   month: string; // Format: "2024-01"
   year: number;
@@ -11,18 +12,37 @@ interface CreatePaymentData {
   notes?: string;
   proofImageUrl?: string;
   transactionNumber?: string;
+  payerName?: string;
   amount?: number; // Optional for backward compatibility, but will be fetched from PaymentType
 }
 
 interface CreateBulkPaymentData {
   studentId: string;
+  academicYearId: string;
   paymentTypeId: string;
   months: string[]; // Array of YYYY-MM format
   paymentMethod?: string;
   notes?: string;
   proofImageUrl?: string;
   transactionNumber?: string;
+  payerName?: string;
 }
+
+const validateMobileBankingPayerName = (paymentMethod?: string, payerName?: string) => {
+  if (paymentMethod === 'mobile_banking' && !payerName?.trim()) {
+    throw new BadRequestError('Payer name is required for mobile banking payments');
+  }
+};
+
+const validateAcademicYear = async (academicYearId: string) => {
+  const academicYear = await prisma.academicYear.findUnique({
+    where: { id: academicYearId },
+  });
+  if (!academicYear) {
+    throw new NotFoundError('Academic year not found');
+  }
+  return academicYear;
+};
 
 export const createPayment = async (data: CreatePaymentData) => {
   // Verify student exists
@@ -54,13 +74,21 @@ export const createPayment = async (data: CreatePaymentData) => {
     throw new BadRequestError('Payment amount must be greater than 0');
   }
 
-  // Check if payment for this month/year already exists
+  await validateAcademicYear(data.academicYearId);
+
+  // Validate month format (YYYY-MM)
+  const monthRegex = /^\d{4}-\d{2}$/;
+  if (!monthRegex.test(data.month)) {
+    throw new BadRequestError('Invalid month format. Use YYYY-MM (e.g., 2024-01)');
+  }
+
+  // Check if payment for this month/academic year already exists
   const existing = await prisma.payment.findUnique({
     where: {
-      studentId_month_year: {
+      studentId_academicYearId_month: {
         studentId: data.studentId,
+        academicYearId: data.academicYearId,
         month: data.month,
-        year: data.year,
       },
     },
   });
@@ -69,15 +97,12 @@ export const createPayment = async (data: CreatePaymentData) => {
     throw new ConflictError('Payment for this month already exists');
   }
 
-  // Validate month format (YYYY-MM)
-  const monthRegex = /^\d{4}-\d{2}$/;
-  if (!monthRegex.test(data.month)) {
-    throw new BadRequestError('Invalid month format. Use YYYY-MM (e.g., 2024-01)');
-  }
+  validateMobileBankingPayerName(data.paymentMethod, data.payerName);
 
   const payment = await prisma.payment.create({
     data: {
       studentId: data.studentId,
+      academicYearId: data.academicYearId,
       paymentTypeId: data.paymentTypeId,
       amount: amount,
       month: data.month,
@@ -86,6 +111,7 @@ export const createPayment = async (data: CreatePaymentData) => {
       notes: data.notes,
       proofImageUrl: data.proofImageUrl,
       transactionNumber: data.transactionNumber,
+      payerName: data.payerName?.trim() || null,
       status: PaymentStatus.pending,
     },
     include: {
@@ -133,6 +159,8 @@ export const createBulkPayments = async (data: CreateBulkPaymentData) => {
     throw new BadRequestError('Payment amount must be greater than 0');
   }
 
+  await validateAcademicYear(data.academicYearId);
+
   // Validate months array
   if (!Array.isArray(data.months) || data.months.length === 0) {
     throw new BadRequestError('At least one month must be provided');
@@ -151,10 +179,13 @@ export const createBulkPayments = async (data: CreateBulkPaymentData) => {
     }
   }
 
-  // Check for existing payments for all months
+  validateMobileBankingPayerName(data.paymentMethod, data.payerName);
+
+  // Check for existing payments for all months in this academic year
   const existingPayments = await prisma.payment.findMany({
     where: {
       studentId: data.studentId,
+      academicYearId: data.academicYearId,
       month: { in: uniqueMonths },
     },
     include: {
@@ -194,6 +225,7 @@ export const createBulkPayments = async (data: CreateBulkPaymentData) => {
           return prisma.payment.create({
             data: {
               studentId: data.studentId,
+              academicYearId: data.academicYearId,
               paymentTypeId: data.paymentTypeId,
               amount: amount,
               month: month,
@@ -202,6 +234,7 @@ export const createBulkPayments = async (data: CreateBulkPaymentData) => {
               notes: data.notes,
               proofImageUrl: data.proofImageUrl,
               transactionNumber: data.transactionNumber,
+              payerName: data.payerName?.trim() || null,
               status: PaymentStatus.pending,
             },
             include: {
@@ -226,6 +259,7 @@ export const createBulkPayments = async (data: CreateBulkPaymentData) => {
 
 export const getPayments = async (filters?: {
   studentId?: string;
+  academicYearId?: string;
   status?: PaymentStatus;
   month?: string;
   year?: number;
@@ -241,6 +275,10 @@ export const getPayments = async (filters?: {
 
   if (filters?.studentId) {
     where.studentId = filters.studentId;
+  }
+
+  if (filters?.academicYearId) {
+    where.academicYearId = filters.academicYearId;
   }
 
   if (filters?.status) {
@@ -329,7 +367,8 @@ export const confirmPayment = async (
   paymentDate?: Date,
   paymentMethod?: string,
   proofImageUrl?: string,
-  transactionNumber?: string
+  transactionNumber?: string,
+  payerName?: string
 ) => {
   const payment = await prisma.payment.findUnique({
     where: { id },
@@ -355,15 +394,20 @@ export const confirmPayment = async (
     throw new BadRequestError('Payment is already confirmed');
   }
 
+  const effectiveMethod = paymentMethod || payment.paymentMethod;
+  const effectivePayerName = payerName !== undefined ? payerName : payment.payerName ?? undefined;
+  validateMobileBankingPayerName(effectiveMethod ?? undefined, effectivePayerName);
+
   // Update payment status
   const updatedPayment = await prisma.payment.update({
     where: { id },
     data: {
       status: PaymentStatus.confirmed,
       paymentDate: paymentDate || new Date(),
-      paymentMethod: paymentMethod || payment.paymentMethod,
+      paymentMethod: effectiveMethod,
       proofImageUrl: proofImageUrl !== undefined ? proofImageUrl : payment.proofImageUrl,
       transactionNumber: transactionNumber !== undefined ? transactionNumber : payment.transactionNumber,
+      payerName: payerName !== undefined ? (payerName.trim() || null) : payment.payerName,
     },
     include: {
       student: {
@@ -431,7 +475,8 @@ export const confirmBulkPayments = async (
   paymentDate?: Date,
   paymentMethod?: string,
   proofImageUrl?: string,
-  transactionNumber?: string
+  transactionNumber?: string,
+  payerName?: string
 ) => {
   if (!Array.isArray(paymentIds) || paymentIds.length === 0) {
     throw new BadRequestError('At least one payment ID must be provided');
@@ -472,6 +517,10 @@ export const confirmBulkPayments = async (
     throw new BadRequestError('One or more payments are already confirmed');
   }
 
+  const effectiveMethod = paymentMethod || payments[0]?.paymentMethod;
+  const effectivePayerName = payerName !== undefined ? payerName : payments[0]?.payerName ?? undefined;
+  validateMobileBankingPayerName(effectiveMethod ?? undefined, effectivePayerName);
+
   // Generate one receipt number for all payments
   const receiptNumber = `REC-${Date.now()}-${studentIds[0].slice(0, 8).toUpperCase()}`;
   const receiptDate = paymentDate || new Date();
@@ -506,6 +555,11 @@ export const confirmBulkPayments = async (
     // Only update transactionNumber if provided
     if (transactionNumber !== undefined) {
       updateData.transactionNumber = transactionNumber;
+    }
+
+    // Only update payerName if provided
+    if (payerName !== undefined) {
+      updateData.payerName = payerName.trim() || null;
     }
 
     // Update all payments at once using updateMany (more efficient)
@@ -651,19 +705,22 @@ export const getReceiptByNumber = async (receiptNumber: string) => {
 
 // Helper function to update student payment status
 const updateStudentPaymentStatus = async (studentId: string) => {
-  // Get current month and year
+  const activeYear = await prisma.academicYear.findFirst({
+    where: { status: 'ACTIVE' },
+  });
+
+  if (!activeYear) {
+    return;
+  }
+
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const currentYear = now.getFullYear();
 
-  // Check if current month payment exists and is confirmed
-  const currentPayment = await prisma.payment.findUnique({
+  const currentPayment = await prisma.payment.findFirst({
     where: {
-      studentId_month_year: {
-        studentId,
-        month: currentMonth,
-        year: currentYear,
-      },
+      studentId,
+      academicYearId: activeYear.id,
+      month: currentMonth,
     },
   });
 

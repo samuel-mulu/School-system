@@ -151,18 +151,62 @@ export const getStudents = async (filters?: {
   search?: string;
   classId?: string;
   gradeId?: string;
+  academicYearId?: string;
   page?: number;
   limit?: number;
   month?: string;
   year?: number;
   userId?: string;
   userRole?: string;
+  excludeGraduated?: boolean;
 }) => {
   const page = filters?.page || 1;
   const limit = filters?.limit || 40;
   const skip = (page - 1) * limit;
 
   const where: any = {};
+
+  let academicYearId = filters?.academicYearId;
+  let isHistorical = false;
+  let academicYearRecord: {
+    id: string;
+    startDate: Date;
+    endDate: Date | null;
+    status: string;
+  } | null = null;
+
+  if (academicYearId) {
+    academicYearRecord = await prisma.academicYear.findUnique({
+      where: { id: academicYearId },
+    });
+    isHistorical = academicYearRecord?.status === "CLOSED";
+  } else {
+    academicYearRecord = await prisma.academicYear.findFirst({
+      where: { status: "ACTIVE" },
+    });
+    academicYearId = academicYearRecord?.id;
+  }
+
+  const buildClassHistorySome = (extra: Record<string, unknown> = {}) => {
+    const classFilter: Record<string, unknown> = {};
+    if (filters?.gradeId) classFilter.gradeId = filters.gradeId;
+    if (academicYearId) classFilter.academicYearId = academicYearId;
+
+    const base: Record<string, unknown> = { ...extra };
+    if (Object.keys(classFilter).length > 0) {
+      base.class = classFilter;
+    }
+    if (!isHistorical && !Object.prototype.hasOwnProperty.call(extra, "endDate")) {
+      base.endDate = null;
+    }
+    return base;
+  };
+
+  if (filters?.classStatus) {
+    where.classStatus = filters.classStatus;
+  } else if (filters?.excludeGraduated !== false) {
+    where.classStatus = { not: ClassStatus.graduated };
+  }
 
   // If user is a TEACHER, only show students from their assigned classes
   if (filters?.userRole === "TEACHER" && filters?.userId) {
@@ -173,57 +217,48 @@ export const getStudents = async (filters?: {
     const classIds = teacherClasses.map((c: { id: string }) => c.id);
 
     if (classIds.length === 0) {
-      // Teacher has no assigned classes, return empty result
       return {
         students: [],
-        pagination: {
-          page,
-          limit,
-          total: 0,
-          totalPages: 0,
-        },
+        pagination: { page, limit, total: 0, totalPages: 0 },
       };
     }
 
-    // Filter students by teacher's assigned classes
     where.classHistory = {
-      some: {
-        classId: { in: classIds },
-        endDate: null, // Only active class assignments
-      },
+      some: buildClassHistorySome({ classId: { in: classIds } }),
     };
-  }
-
-  if (filters?.classStatus) {
-    where.classStatus = filters.classStatus;
+  } else if (filters?.classId) {
+    if (filters?.userRole === "TEACHER" && filters?.userId) {
+      const classRecord = await prisma.class.findUnique({
+        where: { id: filters.classId },
+      });
+      if (!classRecord || classRecord.headTeacherId !== filters.userId) {
+        throw new NotFoundError("Class not found");
+      }
+    }
+    where.classHistory = {
+      some: buildClassHistorySome({ classId: filters.classId }),
+    };
+  } else if (filters?.gradeId || academicYearId) {
+    where.classHistory = { some: buildClassHistorySome() };
   }
 
   if (filters?.paymentStatus) {
     if (filters.month) {
-      // If month is provided, filter students by their payment status for that specific month
       const year = filters.year || new Date().getFullYear();
 
+      const paymentMatch: Record<string, unknown> = {
+        month: filters.month,
+        year: year,
+        status: PaymentStatus.confirmed,
+      };
+      if (academicYearId) {
+        paymentMatch.academicYearId = academicYearId;
+      }
+
       if (filters.paymentStatus === PaymentStatus.confirmed) {
-        // Find students who HAVE a confirmed payment for this month
-        where.payments = {
-          some: {
-            month: filters.month,
-            year: year,
-            status: PaymentStatus.confirmed,
-          },
-        };
+        where.payments = { some: paymentMatch };
       } else {
-        // Find students who DO NOT have a confirmed payment for this month
-        // This includes those with pending payments OR no payment record at all for this month
-        where.NOT = {
-          payments: {
-            some: {
-              month: filters.month,
-              year: year,
-              status: PaymentStatus.confirmed,
-            },
-          },
-        };
+        where.NOT = { payments: { some: paymentMatch } };
       }
     } else {
       // Fallback to global paymentStatus if no month is provided
@@ -240,48 +275,17 @@ export const getStudents = async (filters?: {
     ];
   }
 
-  // Filter by gradeId through classHistory -> class relationship
-  if (filters?.gradeId) {
-    where.classHistory = {
-      some: {
-        class: {
-          gradeId: filters.gradeId,
-        },
-        endDate: null, // Only active class assignments
-      },
-    };
-  }
-
-  // Filter by classId through StudentClass relationship
-  if (filters?.classId) {
-    // If teacher, verify they have access to this class
-    if (filters?.userRole === "TEACHER" && filters?.userId) {
-      const classRecord = await prisma.class.findUnique({
-        where: { id: filters.classId },
-      });
-      if (!classRecord || classRecord.headTeacherId !== filters.userId) {
-        throw new NotFoundError("Class not found");
-      }
-    }
-
-    // If teacher already has classHistory filter, replace it with the specific classId
-    // (since we've verified the teacher has access to this class)
-    where.classHistory = {
-      some: {
-        classId: filters.classId,
-        endDate: null, // Only active class assignments
-      },
-    };
-  }
+  const classHistoryIncludeWhere =
+    isHistorical && academicYearId
+      ? { class: { academicYearId } }
+      : { endDate: null };
 
   const [students, total] = await Promise.all([
     prisma.student.findMany({
       where,
       include: {
         classHistory: {
-          where: {
-            endDate: null, // Active class
-          },
+          where: classHistoryIncludeWhere,
           include: {
             class: true,
           },
@@ -292,11 +296,13 @@ export const getStudents = async (filters?: {
                 OR: [
                   { month: { endsWith: "-13" } },
                   { paymentType: { name: { contains: "Register", mode: "insensitive" } } }
-                ]
+                ],
+                ...(academicYearId ? { academicYearId } : {}),
               }
             : {
                 month: filters.month,
                 year: filters.year || new Date().getFullYear(),
+                ...(academicYearId ? { academicYearId } : {}),
               },
           include: {
             receipt: true,
@@ -313,6 +319,67 @@ export const getStudents = async (filters?: {
       orderBy: {
         firstName: "asc",
       },
+    }),
+    prisma.student.count({ where }),
+  ]);
+
+  return {
+    students,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+};
+
+export const getGraduates = async (filters?: {
+  academicYearId?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}) => {
+  const page = filters?.page || 1;
+  const limit = filters?.limit || 40;
+  const skip = (page - 1) * limit;
+
+  const where: any = {
+    classStatus: ClassStatus.graduated,
+  };
+
+  if (filters?.search) {
+    where.OR = [
+      { firstName: { contains: filters.search, mode: "insensitive" } },
+      { lastName: { contains: filters.search, mode: "insensitive" } },
+    ];
+  }
+
+  if (filters?.academicYearId) {
+    where.classHistory = {
+      some: {
+        promotionStatus: "GRADUATED",
+        class: { academicYearId: filters.academicYearId },
+      },
+    };
+  }
+
+  const [students, total] = await Promise.all([
+    prisma.student.findMany({
+      where,
+      include: {
+        classHistory: {
+          where: { promotionStatus: "GRADUATED" },
+          include: {
+            class: { include: { academicYear: true, grade: true } },
+          },
+          orderBy: { endDate: "desc" },
+          take: 1,
+        },
+      },
+      skip,
+      take: limit,
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     }),
     prisma.student.count({ where }),
   ]);

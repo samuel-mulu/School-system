@@ -5,6 +5,12 @@ import { getActiveAcademicYear } from "./academicYear.service.js";
 import { calculateWeightedScore } from "./calculation.service.js";
 import { getHighestGrade } from "./grade.service.js";
 import { getSetting } from "./settings.service.js";
+import {
+  buildRepeatClassDisplayName,
+  extractSectionAndBuildNextClassName,
+  formatClassNameForYear,
+  stripYearSuffix,
+} from "../utils/promotionClassNames.js";
 
 type PromotionBlocker =
   | 'NO_ACTIVE_YEAR'
@@ -65,10 +71,24 @@ interface PromotionResult {
   promoted: number;
   repeated: number;
   graduated: number;
+  skipped: number;
+  alreadyProcessed: number;
+  errors: Array<{ studentId: string; studentName?: string; error: string }>;
   previousAcademicYear: { id: string; name: string };
   newAcademicYear: { id: string; name: string };
   termsCreated: string[];
 }
+
+const PROMOTION_BATCH_SIZE = 25;
+const TX_OPTIONS = { maxWait: 15000, timeout: 60000 };
+
+const logPromotion = (message: string, data?: unknown) => {
+  if (data !== undefined) {
+    console.log(`[Promotion] ${message}`, data);
+  } else {
+    console.log(`[Promotion] ${message}`);
+  }
+};
 
 const emptySummary = () => ({
   total: 0,
@@ -248,13 +268,11 @@ const buildStudentOutcome = (
     if (nextGrade) {
       nextGradeId = nextGrade.id;
       nextGradeName = nextGrade.name;
-      const currentClassParts = sc.class.name.split(' ');
-      if (currentClassParts.length >= 2) {
-        const section = currentClassParts.slice(1).join(' ');
-        nextClassName = `${nextGrade.name} ${section}`;
-      } else {
-        nextClassName = nextGrade.name;
-      }
+      nextClassName = extractSectionAndBuildNextClassName(
+        sc.class.name,
+        currentGrade.name,
+        nextGrade.name
+      );
     } else {
       outcome = 'GRADUATE';
     }
@@ -262,7 +280,7 @@ const buildStudentOutcome = (
     outcome = 'REPEAT';
     nextGradeId = currentGrade.id;
     nextGradeName = currentGrade.name;
-    nextClassName = sc.class.name;
+    nextClassName = buildRepeatClassDisplayName(sc.class.name, currentGrade.name);
   }
 
   return {
@@ -625,7 +643,22 @@ export const getPromotionPreview = async (
  * Execute promotion for all students
  */
 export const promoteStudents = async (): Promise<PromotionResult> => {
+  logPromotion('=== Execute promotion started ===');
+
   const preview = await getPromotionPreview({ includeStudents: true });
+
+  logPromotion('Preview summary', preview.summary);
+  logPromotion('Active year', preview.activeAcademicYear);
+  logPromotion('Next year name', preview.nextAcademicYearName);
+  if (preview.blockers.length > 0) {
+    logPromotion('Blockers', preview.blockers);
+  }
+
+  for (const s of preview.students) {
+    logPromotion(
+      `Outcome: ${s.firstName} ${s.lastName} | ${s.currentClassName} → ${s.nextClassName ?? 'GRADUATE'} | avg=${s.overallAverage.toFixed(1)} | ${s.outcome}`
+    );
+  }
 
   if (preview.blockers.length > 0) {
     throw new BadRequestError(
@@ -660,37 +693,59 @@ export const promoteStudents = async (): Promise<PromotionResult> => {
 
   const existingNextYear = await prisma.academicYear.findUnique({
     where: { name: nextYearName },
-    include: {
-      classes: {
-        select: { id: true },
-      },
-    },
   });
 
-  if (existingNextYear && preview.students.length > 0) {
-    const studentIds = preview.students.map((s) => s.studentId);
-    const existingAssignments = await prisma.studentClass.findFirst({
-      where: {
-        studentId: { in: studentIds },
-        endDate: null,
-        class: {
-          academicYearId: existingNextYear.id,
-        },
-      },
-    });
-
-    if (existingAssignments) {
-      throw new BadRequestError(
-        'Promotion already executed for this cohort. Students already have active records in the next academic year.'
-      );
-    }
+  if (existingNextYear) {
+    logPromotion(
+      `Next year "${nextYearName}" already exists (${existingNextYear.status}) — resume mode enabled`
+    );
   }
 
-  const grades = await prisma.grade.findMany({
-    orderBy: { order: 'asc' },
-  });
+  const grades = await prisma.grade.findMany({ orderBy: { order: 'asc' } });
+  const studentIds = preview.students.map((s) => s.studentId);
 
-  const result = await prisma.$transaction(async (tx) => {
+  logPromotion(`Students to evaluate: ${studentIds.length}`);
+
+  const [activeAssignments, nextYearAssignments, graduatedStudents] =
+    await Promise.all([
+      prisma.studentClass.findMany({
+        where: {
+          studentId: { in: studentIds },
+          endDate: null,
+        },
+      }),
+      existingNextYear
+        ? prisma.studentClass.findMany({
+            where: {
+              studentId: { in: studentIds },
+              endDate: null,
+              class: { academicYearId: existingNextYear.id },
+            },
+            select: { studentId: true },
+          })
+        : Promise.resolve([]),
+      prisma.student.findMany({
+        where: {
+          id: { in: studentIds },
+          classStatus: 'graduated',
+        },
+        select: { id: true },
+      }),
+    ]);
+
+  const assignmentByStudentId = new Map(
+    activeAssignments.map((a) => [a.studentId, a])
+  );
+  const alreadyInNextYear = new Set(nextYearAssignments.map((a) => a.studentId));
+  const alreadyGraduated = new Set(graduatedStudents.map((s) => s.id));
+
+  const errors: PromotionResult['errors'] = [];
+  let skipped = 0;
+  let alreadyProcessed = 0;
+
+  // Tx A: create next year, seed grade classes, create terms
+  logPromotion('Tx A: setup next year, grade classes, section classes…');
+  const setup = await prisma.$transaction(async (tx) => {
     let nextAcademicYear = await tx.academicYear.findUnique({
       where: { name: nextYearName },
     });
@@ -709,19 +764,23 @@ export const promoteStudents = async (): Promise<PromotionResult> => {
     const classMap = new Map<string, string>();
 
     for (const grade of grades) {
-      const existingClass = await tx.class.findFirst({
-        where: {
-          gradeId: grade.id,
-          academicYearId: nextAcademicYear.id,
-        },
+      const dbName = formatClassNameForYear(grade.name, nextYearName);
+      let existingClass = await tx.class.findFirst({
+        where: { name: dbName },
       });
+
+      if (!existingClass) {
+        existingClass = await tx.class.findFirst({
+          where: { gradeId: grade.id, academicYearId: nextAcademicYear.id },
+        });
+      }
 
       if (existingClass) {
         classMap.set(grade.id, existingClass.id);
       } else {
         const newClass = await tx.class.create({
           data: {
-            name: grade.name,
+            name: dbName,
             description: `${grade.name} - ${nextYearName}`,
             gradeId: grade.id,
             academicYearId: nextAcademicYear.id,
@@ -731,136 +790,298 @@ export const promoteStudents = async (): Promise<PromotionResult> => {
       }
     }
 
-    let promoted = 0;
-    let repeated = 0;
-    let graduated = 0;
-    const now = new Date();
+    const targetClassIds = new Map<string, string>();
 
     for (const studentPreview of preview.students) {
-      const currentStudentClass = await tx.studentClass.findFirst({
-        where: {
-          studentId: studentPreview.studentId,
-          classId: studentPreview.currentClassId,
-          endDate: null,
-        },
-      });
-
-      if (!currentStudentClass) {
+      if (studentPreview.outcome === 'GRADUATE' || !studentPreview.nextGradeId) {
+        continue;
+      }
+      if (!studentPreview.nextClassName) {
         continue;
       }
 
-      let promotionStatus: 'PROMOTED' | 'REPEATED' | 'GRADUATED' | null = null;
+      const displayName = stripYearSuffix(studentPreview.nextClassName);
+      const dbName = formatClassNameForYear(displayName, nextYearName);
+      const key = `${studentPreview.nextGradeId}:${dbName}`;
 
-      if (studentPreview.outcome === 'PASS') {
-        promotionStatus = 'PROMOTED';
-        promoted++;
-      } else if (studentPreview.outcome === 'REPEAT') {
-        promotionStatus = 'REPEATED';
-        repeated++;
-      } else if (studentPreview.outcome === 'GRADUATE') {
-        promotionStatus = 'GRADUATED';
-        graduated++;
-        await tx.studentClass.update({
-          where: { id: currentStudentClass.id },
-          data: {
-            endDate: now,
-            promotionStatus,
-          },
-        });
+      if (targetClassIds.has(key)) {
         continue;
       }
 
-      await tx.studentClass.update({
-        where: { id: currentStudentClass.id },
-        data: {
-          endDate: now,
-          promotionStatus,
-        },
-      });
-
-      if (studentPreview.nextGradeId && classMap.has(studentPreview.nextGradeId)) {
-        let targetClassId = classMap.get(studentPreview.nextGradeId)!;
-
-        if (studentPreview.nextClassName) {
-          const specificClass = await tx.class.findFirst({
-            where: {
-              academicYearId: nextAcademicYear.id,
-              gradeId: studentPreview.nextGradeId,
-              name: studentPreview.nextClassName,
-            },
-          });
-
-          if (specificClass) {
-            targetClassId = specificClass.id;
-          } else {
-            const newClass = await tx.class.create({
-              data: {
-                name: studentPreview.nextClassName,
-                description: `${studentPreview.nextClassName} - ${nextYearName}`,
-                gradeId: studentPreview.nextGradeId,
-                academicYearId: nextAcademicYear.id,
-              },
-            });
-            targetClassId = newClass.id;
-          }
-        }
-
-        await tx.studentClass.create({
+      let cls = await tx.class.findFirst({ where: { name: dbName } });
+      if (!cls) {
+        cls = await tx.class.create({
           data: {
-            studentId: studentPreview.studentId,
-            classId: targetClassId,
-            reason:
-              studentPreview.outcome === 'PASS'
-                ? 'Promoted to next grade'
-                : 'Repeated same grade',
-            startDate: now,
+            name: dbName,
+            description: `${displayName} - ${nextYearName}`,
+            gradeId: studentPreview.nextGradeId,
+            academicYearId: nextAcademicYear.id,
           },
         });
       }
+      targetClassIds.set(key, cls.id);
     }
 
+    return { nextAcademicYear, classMap, targetClassIds };
+  }, TX_OPTIONS);
+
+  const { nextAcademicYear, classMap, targetClassIds } = setup;
+  logPromotion('Tx A complete', {
+    nextYearId: nextAcademicYear.id,
+    gradeClasses: classMap.size,
+    sectionClasses: targetClassIds.size,
+  });
+
+  type BatchOp = {
+    studentId: string;
+    studentName: string;
+    assignmentId: string;
+    outcome: 'PASS' | 'REPEAT' | 'GRADUATE';
+    targetClassId?: string;
+  };
+
+  const operations: BatchOp[] = [];
+
+  for (const studentPreview of preview.students) {
+    const studentName = `${studentPreview.firstName} ${studentPreview.lastName}`;
+    const currentAssignment = assignmentByStudentId.get(studentPreview.studentId);
+
+    if (studentPreview.outcome === 'GRADUATE' && alreadyGraduated.has(studentPreview.studentId)) {
+      alreadyProcessed++;
+      logPromotion(`SKIP (already graduated): ${studentName}`);
+      continue;
+    }
+
+    if (alreadyInNextYear.has(studentPreview.studentId)) {
+      alreadyProcessed++;
+      logPromotion(
+        `SKIP (already in next year): ${studentName} | intended ${studentPreview.outcome}`
+      );
+      continue;
+    }
+
+    if (!currentAssignment) {
+      skipped++;
+      const err = 'No active class assignment found';
+      logPromotion(`SKIP: ${studentName} — ${err}`);
+      errors.push({
+        studentId: studentPreview.studentId,
+        studentName,
+        error: err,
+      });
+      continue;
+    }
+
+    if (currentAssignment.promotionStatus) {
+      alreadyProcessed++;
+      logPromotion(
+        `SKIP (assignment already closed): ${studentName} | status=${currentAssignment.promotionStatus}`
+      );
+      continue;
+    }
+
+    if (studentPreview.outcome === 'GRADUATE') {
+      operations.push({
+        studentId: studentPreview.studentId,
+        studentName,
+        assignmentId: currentAssignment.id,
+        outcome: 'GRADUATE',
+      });
+      logPromotion(`QUEUE GRADUATE: ${studentName}`);
+      continue;
+    }
+
+    if (!studentPreview.nextGradeId) {
+      skipped++;
+      const err = 'No target grade for student';
+      logPromotion(`SKIP: ${studentName} — ${err}`);
+      errors.push({
+        studentId: studentPreview.studentId,
+        studentName,
+        error: err,
+      });
+      continue;
+    }
+
+    let targetClassId = classMap.get(studentPreview.nextGradeId);
+
+    if (studentPreview.nextClassName) {
+      const displayName = stripYearSuffix(studentPreview.nextClassName);
+      const dbName = formatClassNameForYear(displayName, nextYearName);
+      const key = `${studentPreview.nextGradeId}:${dbName}`;
+      targetClassId = targetClassIds.get(key) ?? targetClassId;
+    }
+
+    if (!targetClassId) {
+      skipped++;
+      const err = 'Target class could not be resolved';
+      logPromotion(`SKIP: ${studentName} — ${err}`);
+      errors.push({
+        studentId: studentPreview.studentId,
+        studentName,
+        error: err,
+      });
+      continue;
+    }
+
+    operations.push({
+      studentId: studentPreview.studentId,
+      studentName,
+      assignmentId: currentAssignment.id,
+      outcome: studentPreview.outcome,
+      targetClassId,
+    });
+    logPromotion(
+      `QUEUE ${studentPreview.outcome}: ${studentName} → ${studentPreview.nextClassName}`
+    );
+  }
+
+  const totalBatches = Math.ceil(operations.length / PROMOTION_BATCH_SIZE) || 0;
+  logPromotion('Operation queue', {
+    toProcess: operations.length,
+    alreadyProcessed,
+    skipped,
+    batches: totalBatches,
+    batchSize: PROMOTION_BATCH_SIZE,
+  });
+
+  let promoted = 0;
+  let repeated = 0;
+  let graduated = 0;
+  const now = new Date();
+
+  for (let i = 0; i < operations.length; i += PROMOTION_BATCH_SIZE) {
+    const batch = operations.slice(i, i + PROMOTION_BATCH_SIZE);
+    const batchNum = Math.floor(i / PROMOTION_BATCH_SIZE) + 1;
+    logPromotion(
+      `Tx B batch ${batchNum}/${totalBatches}: processing ${batch.length} students…`
+    );
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        for (const op of batch) {
+          const promotionStatus =
+            op.outcome === 'PASS'
+              ? ('PROMOTED' as const)
+              : op.outcome === 'REPEAT'
+                ? ('REPEATED' as const)
+                : ('GRADUATED' as const);
+
+          await tx.studentClass.update({
+            where: { id: op.assignmentId },
+            data: { endDate: now, promotionStatus },
+          });
+
+          if (op.outcome === 'GRADUATE') {
+            graduated++;
+            await tx.student.update({
+              where: { id: op.studentId },
+              data: { classStatus: 'graduated' },
+            });
+            logPromotion(`DONE GRADUATE: ${op.studentName}`);
+          } else if (op.targetClassId) {
+            if (op.outcome === 'PASS') promoted++;
+            else repeated++;
+
+            await tx.studentClass.create({
+              data: {
+                studentId: op.studentId,
+                classId: op.targetClassId,
+                reason:
+                  op.outcome === 'PASS'
+                    ? 'Promoted to next grade'
+                    : 'Repeated same grade',
+                startDate: now,
+              },
+            });
+
+            await tx.student.update({
+              where: { id: op.studentId },
+              data: { classStatus: 'assigned' },
+            });
+            logPromotion(`DONE ${op.outcome}: ${op.studentName}`);
+          }
+        }
+      }, TX_OPTIONS);
+      logPromotion(`Tx B batch ${batchNum}/${totalBatches}: OK`);
+    } catch (batchError) {
+      const msg =
+        batchError instanceof Error ? batchError.message : String(batchError);
+      logPromotion(`Tx B batch ${batchNum}/${totalBatches}: FAILED — ${msg}`);
+      for (const op of batch) {
+        errors.push({
+          studentId: op.studentId,
+          studentName: op.studentName,
+          error: `Batch ${batchNum} failed: ${msg}`,
+        });
+        skipped++;
+      }
+    }
+  }
+
+  // Tx C: flip academic years (safe to re-run if next year already ACTIVE)
+  logPromotion('Tx C: close old year, activate new year…');
+  const activatedYear = await prisma.$transaction(async (tx) => {
     await tx.academicYear.update({
       where: { id: activeYear.id },
       data: { status: 'CLOSED' },
     });
 
     await tx.academicYear.updateMany({
-      where: {
-        status: 'ACTIVE',
-        id: { not: nextAcademicYear.id },
-      },
+      where: { status: 'ACTIVE', id: { not: nextAcademicYear.id } },
       data: { status: 'CLOSED' },
     });
 
-    const activatedYear = await tx.academicYear.update({
+    const activated = await tx.academicYear.update({
       where: { id: nextAcademicYear.id },
       data: { status: 'ACTIVE' },
     });
 
     const termsCreated = await createDefaultTermsForYear(
       tx,
-      activatedYear.id,
-      activatedYear.startDate,
-      activatedYear.endDate
+      activated.id,
+      activated.startDate,
+      activated.endDate
     );
 
-    return {
-      promoted,
-      repeated,
-      graduated,
-      previousAcademicYear: { id: activeYear.id, name: activeYear.name },
-      newAcademicYear: { id: activatedYear.id, name: activatedYear.name },
-      termsCreated,
-    };
+    return { activated, termsCreated };
+  }, TX_OPTIONS);
+
+  logPromotion('Tx C complete', {
+    newActiveYear: activatedYear.activated.name,
+    termsCreated: activatedYear.termsCreated,
   });
 
-  return {
-    message: 'Promotion completed successfully',
+  const result: PromotionResult = {
+    message:
+      errors.length > 0
+        ? 'Promotion finished with errors — check server logs and re-run to process remaining students'
+        : alreadyProcessed > 0 && operations.length === 0
+          ? 'All students were already processed; academic year state updated'
+          : 'Promotion completed successfully',
+    promoted,
+    repeated,
+    graduated,
+    skipped,
+    alreadyProcessed,
+    errors,
+    previousAcademicYear: { id: activeYear.id, name: activeYear.name },
+    newAcademicYear: { id: activatedYear.activated.id, name: activatedYear.activated.name },
+    termsCreated: activatedYear.termsCreated,
+  };
+
+  logPromotion('=== Execute promotion finished ===', {
     promoted: result.promoted,
     repeated: result.repeated,
     graduated: result.graduated,
-    previousAcademicYear: result.previousAcademicYear,
-    newAcademicYear: result.newAcademicYear,
-    termsCreated: result.termsCreated,
-  };
+    alreadyProcessed: result.alreadyProcessed,
+    skipped: result.skipped,
+    errors: result.errors.length,
+  });
+
+  if (result.errors.length > 0) {
+    logPromotion('Errors detail', result.errors);
+  }
+
+  return result;
 };

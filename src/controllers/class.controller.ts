@@ -28,6 +28,8 @@ export const getClasses = async (
       limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
       userId: req.user?.userId,
       userRole: req.user?.role,
+      academicYearId: req.query.academicYearId as string,
+      gradeId: req.query.gradeId as string,
     };
     const result = await classService.getClasses(filters);
     sendSuccess(res, result);

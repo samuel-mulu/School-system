@@ -1,6 +1,49 @@
 import { prisma } from "../config/db.js";
 import { NotFoundError } from "../utils/errors.js";
 
+/** Roster student IDs for an academic year (historical includes ended assignments). */
+async function getRosterStudentIdsForYear(
+  academicYearId: string,
+  options?: { excludeGraduated?: boolean },
+): Promise<string[]> {
+  const year = await prisma.academicYear.findUnique({
+    where: { id: academicYearId },
+    select: { status: true },
+  });
+  const isHistorical = year?.status === "CLOSED";
+
+  const classesInYear = await prisma.class.findMany({
+    where: { academicYearId },
+    select: { id: true },
+  });
+  const classIds = classesInYear.map((c) => c.id);
+  if (classIds.length === 0) return [];
+
+  const studentClasses = await prisma.studentClass.findMany({
+    where: {
+      classId: { in: classIds },
+      ...(isHistorical ? {} : { endDate: null }),
+    },
+    select: { studentId: true },
+  });
+
+  let studentIds = [...new Set(studentClasses.map((sc) => sc.studentId))];
+
+  if (options?.excludeGraduated !== false && !isHistorical) {
+    const graduates = await prisma.student.findMany({
+      where: {
+        id: { in: studentIds },
+        classStatus: "graduated",
+      },
+      select: { id: true },
+    });
+    const graduateIds = new Set(graduates.map((g) => g.id));
+    studentIds = studentIds.filter((id) => !graduateIds.has(id));
+  }
+
+  return studentIds;
+}
+
 export const getStudentReport = async (studentId: string) => {
   const student = await prisma.student.findUnique({
     where: { id: studentId },
@@ -305,30 +348,17 @@ export const getPaymentReports = async (params: {
     whereClause.month = month;
   }
 
-  // Filter by registrar if provided (will be implemented when we add processedBy field)
-  // For now, we'll skip this filter
-
-  // If academic year is provided, filter by students in classes from that academic year
+  // Filter by academic year on payment rows directly
   if (academicYearId) {
-    const classesInYear = await prisma.class.findMany({
-      where: { academicYearId },
-      select: { id: true },
-    });
-    const classIds = classesInYear.map(c => c.id);
-    
-    const studentClasses = await prisma.studentClass.findMany({
-      where: {
-        classId: { in: classIds },
-        endDate: null, // Active students only
-      },
-      select: { studentId: true },
-    });
-    const studentIds = [...new Set(studentClasses.map(sc => sc.studentId))];
-    
-    if (studentIds.length > 0) {
-      whereClause.studentId = { in: studentIds };
-    } else {
-      // No students in this academic year, return empty result
+    whereClause.academicYearId = academicYearId;
+  }
+
+  // If academic year is provided, also resolve roster for student counts
+  let rosterStudentIds: string[] = [];
+  if (academicYearId) {
+    rosterStudentIds = await getRosterStudentIdsForYear(academicYearId);
+
+    if (rosterStudentIds.length === 0) {
       return {
         summary: {
           totalRevenue: 0,
@@ -372,35 +402,23 @@ export const getPaymentReports = async (params: {
   let paidStudents = 0;
   
   if (academicYearId) {
-    // Get all students in the academic year
-    const classesInYear = await prisma.class.findMany({
-      where: { academicYearId },
-      select: { id: true },
-    });
-    const classIds = classesInYear.map(c => c.id);
-    
-    const studentClasses = await prisma.studentClass.findMany({
-      where: {
-        classId: { in: classIds },
-        endDate: null, // Active students only
-      },
-      select: { studentId: true },
-    });
-    const studentIds = [...new Set(studentClasses.map(sc => sc.studentId))];
-    totalStudents = studentIds.length;
-    
+    totalStudents = rosterStudentIds.length;
+
     // Count students who have paid for the selected month
     if (month) {
       const year = parseInt(month.split('-')[0]);
       const paidStudentIds = new Set(
         confirmedPayments
-          .filter(p => p.month === month && p.year === year)
+          .filter(p => p.month === month && p.year === year && rosterStudentIds.includes(p.studentId))
           .map(p => p.studentId)
       );
       paidStudents = paidStudentIds.size;
     } else {
-      // If no month filter, count all students with any payment
-      const paidStudentIds = new Set(confirmedPayments.map(p => p.studentId));
+      const paidStudentIds = new Set(
+        confirmedPayments
+          .filter(p => rosterStudentIds.includes(p.studentId))
+          .map(p => p.studentId)
+      );
       paidStudents = paidStudentIds.size;
     }
   }
@@ -463,20 +481,7 @@ export const getPaymentReports = async (params: {
   // Get total students for the academic year (for monthly student stats)
   let allStudentIds: string[] = [];
   if (academicYearId) {
-    const classesInYear = await prisma.class.findMany({
-      where: { academicYearId },
-      select: { id: true },
-    });
-    const classIds = classesInYear.map(c => c.id);
-    
-    const studentClasses = await prisma.studentClass.findMany({
-      where: {
-        classId: { in: classIds },
-        endDate: null, // Active students only
-      },
-      select: { studentId: true },
-    });
-    allStudentIds = [...new Set(studentClasses.map(sc => sc.studentId))];
+    allStudentIds = rosterStudentIds;
   }
 
   // Group by month
@@ -590,26 +595,13 @@ export const getRegistrarPaymentReports = async (params: {
     }
   }
 
-  // Filter by academic year (required for registrar)
-  const classesInYear = await prisma.class.findMany({
-    where: { academicYearId },
-    select: { id: true },
-  });
-  const classIds = classesInYear.map(c => c.id);
-  
-  const studentClasses = await prisma.studentClass.findMany({
-    where: {
-      classId: { in: classIds },
-      endDate: null, // Active students only
-    },
-    select: { studentId: true },
-  });
-  const studentIds = [...new Set(studentClasses.map(sc => sc.studentId))];
-  
-  if (studentIds.length > 0) {
-    whereClause.studentId = { in: studentIds };
-  } else {
-    // No students in this academic year, return empty result
+  // Filter by academic year on payment rows directly
+  whereClause.academicYearId = academicYearId;
+
+  // Resolve roster for context (empty roster still returns zero revenue)
+  const rosterStudentIds = await getRosterStudentIdsForYear(academicYearId);
+
+  if (rosterStudentIds.length === 0) {
     return {
       summary: {
         totalRevenue: 0,
