@@ -109,6 +109,24 @@ export const transferStudent = async (
   }
 };
 
+export const transferStudentsBulk = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    const { studentIds, newClassId, reason } = req.body;
+    const result = await studentService.transferStudentsBulk(
+      studentIds,
+      newClassId,
+      reason,
+    );
+    sendSuccess(res, result, "Bulk transfer completed");
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const deleteStudent = async (
   req: Request,
   res: Response,

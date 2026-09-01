@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import * as studentController from "../controllers/student.controller.js";
 import { authenticate } from "../middleware/auth.js";
-import { requireRegistrarOrOwner } from "../middleware/role.js";
+import { requireRegistrarOrOwner, requireRole } from "../middleware/role.js";
 import { uploadSingle } from "../middleware/upload.js";
 import { validate } from "../middleware/validation.js";
 
@@ -62,6 +62,14 @@ const transferSchema = z.object({
   }),
 });
 
+const bulkTransferSchema = z.object({
+  body: z.object({
+    studentIds: z.array(z.string().uuid()).min(1).max(200),
+    newClassId: z.string().uuid(),
+    reason: z.string().optional(),
+  }),
+});
+
 const toggleParentsPortalSchema = z.object({
   body: z.object({
     parentsPortal: z.boolean(),
@@ -87,6 +95,14 @@ router.post(
 
 router.get("/", authenticate, studentController.getStudents);
 
+router.post(
+  "/transfer/bulk",
+  authenticate,
+  requireRole("OWNER"),
+  validate(bulkTransferSchema),
+  studentController.transferStudentsBulk,
+);
+
 router.get("/:id", authenticate, studentController.getStudentById);
 
 router.patch(
@@ -104,8 +120,6 @@ router.post(
   validate(assignClassSchema),
   studentController.assignStudentToClass,
 );
-
-import { requireRole } from "../middleware/role.js";
 
 router.post(
   "/:id/transfer",

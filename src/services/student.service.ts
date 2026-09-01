@@ -603,6 +603,151 @@ export const transferStudent = async (
   });
 };
 
+export interface BulkTransferItemResult {
+  studentId: string;
+  success: boolean;
+  studentName?: string;
+  error?: string;
+}
+
+export interface BulkTransferResult {
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: BulkTransferItemResult[];
+}
+
+export const transferStudentsBulk = async (
+  studentIds: string[],
+  newClassId: string,
+  reason: string = "transfer",
+): Promise<BulkTransferResult> => {
+  const newClass = await prisma.class.findUnique({
+    where: { id: newClassId },
+  });
+
+  if (!newClass) {
+    throw new NotFoundError("Class not found");
+  }
+
+  const uniqueIds = [...new Set(studentIds)];
+
+  if (uniqueIds.length === 0) {
+    throw new BadRequestError("No students selected");
+  }
+
+  if (uniqueIds.length > 200) {
+    throw new BadRequestError("Cannot transfer more than 200 students at once");
+  }
+
+  const students = await prisma.student.findMany({
+    where: { id: { in: uniqueIds } },
+    select: { id: true, firstName: true, lastName: true },
+  });
+  const studentMap = new Map(students.map((s) => [s.id, s]));
+
+  const activeAssignments = await prisma.studentClass.findMany({
+    where: {
+      studentId: { in: uniqueIds },
+      endDate: null,
+    },
+  });
+  const assignmentMap = new Map(
+    activeAssignments.map((a) => [a.studentId, a]),
+  );
+
+  const results: BulkTransferItemResult[] = [];
+  const toTransfer: Array<{
+    studentId: string;
+    assignmentId: string;
+    name: string;
+  }> = [];
+
+  for (const id of uniqueIds) {
+    const student = studentMap.get(id);
+    if (!student) {
+      results.push({
+        studentId: id,
+        success: false,
+        error: "Student not found",
+      });
+      continue;
+    }
+
+    const studentName = `${student.firstName} ${student.lastName}`;
+    const assignment = assignmentMap.get(id);
+
+    if (!assignment) {
+      results.push({
+        studentId: id,
+        success: false,
+        studentName,
+        error: "Student does not have an active class assignment",
+      });
+      continue;
+    }
+
+    if (assignment.classId === newClassId) {
+      results.push({
+        studentId: id,
+        success: false,
+        studentName,
+        error: "Student is already in this class",
+      });
+      continue;
+    }
+
+    toTransfer.push({
+      studentId: id,
+      assignmentId: assignment.id,
+      name: studentName,
+    });
+  }
+
+  const BATCH_SIZE = 25;
+  for (let i = 0; i < toTransfer.length; i += BATCH_SIZE) {
+    const batch = toTransfer.slice(i, i + BATCH_SIZE);
+    const now = new Date();
+
+    await prisma.$transaction(async (tx) => {
+      for (const item of batch) {
+        await tx.studentClass.update({
+          where: { id: item.assignmentId },
+          data: {
+            endDate: now,
+            reason: reason || "transferred",
+          },
+        });
+        await tx.studentClass.create({
+          data: {
+            studentId: item.studentId,
+            classId: newClassId,
+            reason: reason || "transfer",
+            startDate: now,
+          },
+        });
+      }
+    });
+
+    for (const item of batch) {
+      results.push({
+        studentId: item.studentId,
+        success: true,
+        studentName: item.name,
+      });
+    }
+  }
+
+  const succeeded = results.filter((r) => r.success).length;
+
+  return {
+    total: uniqueIds.length,
+    succeeded,
+    failed: uniqueIds.length - succeeded,
+    results,
+  };
+};
+
 export const updateParentsPortal = async (
   id: string,
   parentsPortal: boolean,
